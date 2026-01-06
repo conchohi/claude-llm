@@ -1,14 +1,17 @@
 """
-LangChain service for Ollama LLM integration.
+LangChain service for LLM integration.
+Supports multiple LLM providers: Ollama and OpenAI.
 Handles LLM initialization, prompt management, and response generation.
 """
 
-from typing import Dict, AsyncIterator, Optional
+from typing import Dict, AsyncIterator, Optional, Union
 from pathlib import Path
 from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.utils.logger import get_logger
 
@@ -17,55 +20,102 @@ logger = get_logger(__name__)
 
 class LangChainService:
     """
-    Service for managing LangChain and Ollama integration.
+    Service for managing LangChain and LLM integration.
+    Supports multiple providers: Ollama and OpenAI.
     """
 
     def __init__(
         self,
-        base_url: str = "http://localhost:11434",
+        provider: str = "ollama",
         model: str = "llama3.2",
         temperature: float = 0.7,
         max_tokens: int = 2048,
         prompt_path: Optional[str] = None,
+        # Ollama-specific
+        ollama_base_url: str = "http://localhost:11434",
+        ollama_keep_alive: str = "5m",
+        # OpenAI-specific
+        openai_api_key: Optional[str] = None,
+        openai_base_url: str = "https://api.openai.com/v1",
+        openai_organization: Optional[str] = None,
     ):
         """
         Initialize the LangChain service.
 
         Args:
-            base_url: Ollama API base URL.
-            model: Ollama model name.
+            provider: LLM provider ('ollama' or 'openai').
+            model: LLM model name.
             temperature: Generation temperature (0.0-2.0).
             max_tokens: Maximum tokens to generate.
-            template_path: Optional path to custom prompt template file.
+            prompt_path: Optional path to custom prompt template file.
+            ollama_base_url: Ollama API base URL.
+            ollama_keep_alive: Ollama keep-alive duration.
+            openai_api_key: OpenAI API key (Bearer token).
+            openai_base_url: OpenAI API base URL.
+            openai_organization: OpenAI organization ID.
         """
-        self.base_url = base_url
+        self.provider = provider.lower()
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.llm: Optional[ChatOllama] = None
+
+        # Provider-specific settings
+        self.ollama_base_url = ollama_base_url
+        self.ollama_keep_alive = ollama_keep_alive
+        self.openai_api_key = openai_api_key
+        self.openai_base_url = openai_base_url
+        self.openai_organization = openai_organization
+
+        self.llm: Optional[BaseChatModel] = None
         self.default_prompt_template = self._create_default_template(prompt_path)
 
-    def initialize_llm(self, model: Optional[str] = None, **kwargs) -> ChatOllama:
+    def initialize_llm(self, model: Optional[str] = None, **kwargs) -> BaseChatModel:
         """
-        Initialize or reinitialize the Ollama LLM.
+        Initialize or reinitialize the LLM based on the configured provider.
 
         Args:
             model: Optional model override.
-            **kwargs: Additional ChatOllama parameters.
+            **kwargs: Additional provider-specific parameters.
 
         Returns:
-            Initialized ChatOllama instance.
+            Initialized LLM instance (ChatOllama or ChatOpenAI).
+
+        Raises:
+            ValueError: If provider is not supported.
         """
         model_name = model or self.model
 
-        logger.info(f"Initializing Ollama LLM with model: {model_name}")
+        if self.provider == "ollama":
+            logger.info(f"Initializing Ollama LLM with model: {model_name}")
+            self.llm = ChatOllama(
+                base_url=self.ollama_base_url,
+                model=model_name,
+                temperature=kwargs.get("temperature", self.temperature),
+                num_predict=kwargs.get("max_tokens", self.max_tokens),
+                keep_alive=self.ollama_keep_alive,
+            )
 
-        self.llm = ChatOllama(
-            base_url=self.base_url,
-            model=model_name,
-            temperature=kwargs.get("temperature", self.temperature),
-            num_predict=kwargs.get("max_tokens", self.max_tokens),
-        )
+        elif self.provider == "openai":
+            logger.info(f"Initializing OpenAI LLM with model: {model_name}")
+
+            if not self.openai_api_key:
+                raise ValueError("OpenAI API key is required when provider is 'openai'")
+
+            openai_kwargs = {
+                "model": model_name,
+                "temperature": kwargs.get("temperature", self.temperature),
+                "max_tokens": kwargs.get("max_tokens", self.max_tokens),
+                "api_key": self.openai_api_key,
+                "base_url": self.openai_base_url,
+            }
+
+            if self.openai_organization:
+                openai_kwargs["organization"] = self.openai_organization
+
+            self.llm = ChatOpenAI(**openai_kwargs)
+
+        else:
+            raise ValueError(f"Unsupported LLM provider: {self.provider}. Use 'ollama' or 'openai'.")
 
         return self.llm
 
@@ -249,9 +299,9 @@ Please provide a comprehensive and accurate answer based on the available contex
         """
         return ChatPromptTemplate.from_template(template)
 
-    async def test_ollama_connection(self) -> Dict:
+    async def test_connection(self) -> Dict:
         """
-        Test connection to Ollama server.
+        Test connection to the configured LLM provider.
 
         Returns:
             Dictionary with connection test results.
@@ -263,21 +313,36 @@ Please provide a comprehensive and accurate answer based on the available contex
             # Try a simple invocation
             response = await self.llm.ainvoke("Hello")
 
-            logger.info(f"Ollama connection test successful")
+            logger.info(f"{self.provider.upper()} connection test successful")
 
-            return {
+            result = {
                 "success": True,
-                "message": "Successfully connected to Ollama",
+                "message": f"Successfully connected to {self.provider.upper()}",
+                "provider": self.provider,
                 "model": self.model,
-                "base_url": self.base_url,
                 "test_response": str(response.content)[:100],  # First 100 chars
             }
 
+            if self.provider == "ollama":
+                result["base_url"] = self.ollama_base_url
+            elif self.provider == "openai":
+                result["base_url"] = self.openai_base_url
+
+            return result
+
         except Exception as e:
-            logger.error(f"Ollama connection test failed: {e}")
+            logger.error(f"{self.provider.upper()} connection test failed: {e}")
             return {
                 "success": False,
-                "message": f"Failed to connect to Ollama: {str(e)}",
+                "message": f"Failed to connect to {self.provider.upper()}: {str(e)}",
+                "provider": self.provider,
                 "model": self.model,
-                "base_url": self.base_url,
             }
+
+    # Backward compatibility alias
+    async def test_ollama_connection(self) -> Dict:
+        """
+        Deprecated: Use test_connection() instead.
+        Test connection to Ollama server (for backward compatibility).
+        """
+        return await self.test_connection()

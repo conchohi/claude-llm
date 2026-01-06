@@ -11,16 +11,34 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class OllamaSettings(BaseSettings):
-    """Ollama LLM configuration."""
+class LLMSettings(BaseSettings):
+    """LLM provider configuration."""
 
-    base_url: str = Field(default="http://localhost:11434", description="Ollama API base URL")
-    model: str = Field(default="llama3.2", description="Default Ollama model")
+    provider: str = Field(default="ollama", description="LLM provider: 'ollama' or 'openai'")
+    model: str = Field(default="llama3.2", description="Default LLM model")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Generation temperature")
     max_tokens: int = Field(default=2048, gt=0, description="Maximum tokens to generate")
+
+    model_config = SettingsConfigDict(env_prefix="LLM_")
+
+
+class OllamaSettings(BaseSettings):
+    """Ollama-specific configuration."""
+
+    base_url: str = Field(default="http://localhost:11434", description="Ollama API base URL")
     keep_alive: str = Field(default="5m", description="Keep model loaded in memory")
 
     model_config = SettingsConfigDict(env_prefix="OLLAMA_")
+
+
+class OpenAISettings(BaseSettings):
+    """OpenAI-specific configuration."""
+
+    api_key: str = Field(default="", description="OpenAI API key (Bearer token)")
+    base_url: str = Field(default="https://api.openai.com/v1", description="OpenAI API base URL (for compatible APIs)")
+    organization: str = Field(default="", description="OpenAI organization ID (optional)")
+
+    model_config = SettingsConfigDict(env_prefix="OPENAI_")
 
 
 class APISettings(BaseSettings):
@@ -95,13 +113,15 @@ class AuthSettings(BaseSettings):
 
 class Settings(BaseSettings):
     """
-        Main application settings container. 
+        Main application settings container.
         Python이 settings.py를 import할 때 하위 세팅 model_config 읽고 메타데이터 저장
         Settings() ← 이 시점에 실제 객체 생성, 메타데이터 기반 필드를 순회하면서 값 설정
     """
-    
+
     # Sub-settings
+    llm: LLMSettings = Field(default_factory=LLMSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
+    openai: OpenAISettings = Field(default_factory=OpenAISettings)
     api: APISettings = Field(default_factory=APISettings)
     cors: CORSSettings = Field(default_factory=CORSSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)

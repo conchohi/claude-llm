@@ -84,22 +84,29 @@ async def lifespan(app: FastAPI):
             session_manager = None
 
         # Initialize LangChain service
-        logger.info(f"Initializing LangChain service with Ollama at {settings.ollama.base_url}")
+        logger.info(f"Initializing LangChain service with provider: {settings.llm.provider}")
         langchain_service = LangChainService(
-            base_url=settings.ollama.base_url,
-            model=settings.ollama.model,
-            temperature=settings.ollama.temperature,
-            max_tokens=settings.ollama.max_tokens,
+            provider=settings.llm.provider,
+            model=settings.llm.model,
+            temperature=settings.llm.temperature,
+            max_tokens=settings.llm.max_tokens,
             prompt_path=settings.prompt_path,
+            # Ollama-specific
+            ollama_base_url=settings.ollama.base_url,
+            ollama_keep_alive=settings.ollama.keep_alive,
+            # OpenAI-specific
+            openai_api_key=settings.openai.api_key,
+            openai_base_url=settings.openai.base_url,
+            openai_organization=settings.openai.organization,
         )
 
-        # Test Ollama connection
-        logger.info("Testing Ollama connection...")
-        ollama_test = await langchain_service.test_ollama_connection()
-        if ollama_test["success"]:
-            logger.info(f"✓ Successfully connected to Ollama (model: {settings.ollama.model})")
+        # Test LLM connection
+        logger.info(f"Testing {settings.llm.provider.upper()} connection...")
+        llm_test = await langchain_service.test_connection()
+        if llm_test["success"]:
+            logger.info(f"✓ Successfully connected to {settings.llm.provider.upper()} (model: {settings.llm.model})")
         else:
-            logger.error(f"✗ Failed to connect to Ollama: {ollama_test['message']}")
+            logger.error(f"✗ Failed to connect to {settings.llm.provider.upper()}: {llm_test['message']}")
             logger.warning("Application will start but queries may fail")
 
         # Initialize MCP client
