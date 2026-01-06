@@ -1,5 +1,5 @@
 """
-Data models for MCP server configurations.
+MCP 서버 설정을 위한 데이터 모델.
 """
 
 from dataclasses import dataclass, field
@@ -8,101 +8,101 @@ from typing import Dict, List, Optional, Literal
 
 @dataclass
 class MCPServerConfig:
-    """Configuration for a single MCP server."""
+    """단일 MCP 서버를 위한 설정."""
 
     name: str
-    """Unique identifier for the MCP server."""
+    """MCP 서버의 고유 식별자."""
 
     description: str = ""
-    """Human-readable description of the server's purpose."""
+    """서버 목적에 대한 사람이 읽을 수 있는 설명."""
 
     enabled: bool = True
-    """Whether the server is enabled and should be started."""
+    """서버가 활성화되어 시작되어야 하는지 여부."""
 
-    # Process-based server fields
+    # 프로세스 기반 서버 필드
     command: Optional[str] = None
-    """Command to execute for process-based servers (e.g., 'python', 'npx')."""
+    """프로세스 기반 서버를 위해 실행할 명령 (예: 'python', 'npx')."""
 
     args: List[str] = field(default_factory=list)
-    """Command-line arguments for the server process."""
+    """서버 프로세스를 위한 명령줄 인수."""
 
     env: Dict[str, str] = field(default_factory=dict)
-    """Environment variables for the server process."""
+    """서버 프로세스를 위한 환경 변수."""
 
-    # HTTP-based server fields
+    # HTTP 기반 서버 필드
     type: Literal["process", "http"] = "process"
-    """Server type: 'process' for subprocess, 'http' for already-running HTTP server."""
+    """서버 타입: 서브프로세스의 경우 'process', 이미 실행 중인 HTTP 서버의 경우 'http'."""
 
     url: Optional[str] = None
-    """Base URL for HTTP-based servers (e.g., 'http://localhost:3001/mcp')."""
+    """HTTP 기반 서버를 위한 기본 URL (예: 'http://localhost:3001/mcp')."""
 
     headers: Dict[str, str] = field(default_factory=dict)
-    """HTTP headers to include in requests to HTTP-based servers."""
+    """HTTP 기반 서버에 대한 요청에 포함할 HTTP 헤더."""
 
     def is_process_based(self) -> bool:
-        """Check if this is a process-based server."""
+        """프로세스 기반 서버인지 확인합니다."""
         return self.type == "process" and self.command is not None
 
     def is_http_based(self) -> bool:
-        """Check if this is an HTTP-based server."""
+        """HTTP 기반 서버인지 확인합니다."""
         return self.type == "http" and self.url is not None
 
     def validate(self) -> None:
-        """Validate server configuration."""
+        """서버 설정을 검증합니다."""
         if not self.name:
-            raise ValueError("Server name cannot be empty")
+            raise ValueError("서버 이름은 비어 있을 수 없습니다")
 
         if self.is_process_based():
             if not self.command:
-                raise ValueError(f"Process-based server '{self.name}' must have a command")
+                raise ValueError(f"프로세스 기반 서버 '{self.name}'은(는) 명령이 있어야 합니다")
         elif self.is_http_based():
             if not self.url:
-                raise ValueError(f"HTTP-based server '{self.name}' must have a URL")
+                raise ValueError(f"HTTP 기반 서버 '{self.name}'은(는) URL이 있어야 합니다")
         else:
             raise ValueError(
-                f"Server '{self.name}' must be either process-based (with command) "
-                f"or HTTP-based (with type='http' and url)"
+                f"서버 '{self.name}'은(는) 프로세스 기반 (명령 포함) 또는 "
+                f"HTTP 기반 (type='http' 및 url 포함)이어야 합니다"
             )
 
 
 @dataclass
 class MCPServerStatus:
-    """Runtime status of an MCP server."""
+    """MCP 서버의 런타임 상태."""
 
     name: str
-    """Server name."""
+    """서버 이름."""
 
     enabled: bool
-    """Whether the server is enabled in configuration."""
+    """서버가 설정에서 활성화되었는지 여부."""
 
     running: bool = False
-    """Whether the server is currently running."""
+    """서버가 현재 실행 중인지 여부."""
 
     healthy: bool = False
-    """Whether the server responded to health check."""
+    """서버가 상태 확인에 응답했는지 여부."""
 
     error: Optional[str] = None
-    """Last error message, if any."""
+    """마지막 오류 메시지 (있는 경우)."""
 
     type: Literal["process", "http"] = "process"
-    """Server type."""
+    """서버 타입."""
 
 
 @dataclass
 class MCPResponse:
-    """Response from an MCP server query."""
+    """MCP 서버 쿼리의 응답."""
 
     server_name: str
-    """Name of the server that provided this response."""
+    """이 응답을 제공한 서버의 이름."""
 
     success: bool
-    """Whether the query was successful."""
+    """쿼리가 성공했는지 여부."""
 
     data: Optional[Dict] = None
-    """Response data from the server."""
+    """서버의 응답 데이터."""
 
     error: Optional[str] = None
-    """Error message if the query failed."""
+    """쿼리 실패 시 오류 메시지."""
 
     latency_ms: float = 0.0
-    """Query latency in milliseconds."""
+    """쿼리 지연 시간(밀리초)."""

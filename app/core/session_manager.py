@@ -1,5 +1,5 @@
 """
-Redis-based session manager for conversation history, user profiles, and MCP caching.
+대화 기록, 사용자 프로필 및 MCP 캐싱을 위한 Redis 기반 세션 매니저.
 """
 
 import json
@@ -15,7 +15,7 @@ from app.models.auth import UserProfile, ConversationSession, ConversationMessag
 
 class SessionManager:
     """
-    Manages user sessions, profiles, and caching using Redis.
+    Redis를 사용하여 사용자 세션, 프로필 및 캐싱을 관리합니다.
     """
 
     def __init__(
@@ -27,21 +27,24 @@ class SessionManager:
         secert_key: str = ""
     ):
         """
-        Initialize the session manager.
+        세션 매니저를 초기화합니다.
 
         Args:
-            redis_url: Redis connection URL (redis://host:port/db).
-            session_ttl: Session TTL in seconds (default: 1 hour).
-            cache_ttl: MCP cache TTL in seconds (default: 5 minutes).
+            redis_url: Redis 연결 URL (redis://host:port/db).
+            max_connections: Redis 연결 풀 크기.
+            session_ttl: 세션 TTL (초) (기본값: 1시간).
+            cache_ttl: MCP 캐시 TTL (초) (기본값: 5분).
+            secert_key: API 키 서명을 위한 HMAC 비밀키.
         """
         self.redis_url = redis_url
+        self.max_connections = max_connections
         self.session_ttl = session_ttl
         self.cache_ttl = cache_ttl
         self._redis: Optional[aioredis.Redis] = None
         self.secret_key = secert_key
 
     async def connect(self) -> None:
-        """Connect to Redis."""
+        """Redis에 연결합니다."""
         self._redis = await aioredis.from_url(
             self.redis_url,
             max_connections=self.max_connections,
@@ -50,24 +53,24 @@ class SessionManager:
         )
 
     async def disconnect(self) -> None:
-        """Disconnect from Redis."""
+        """Redis 연결을 끊습니다."""
         if self._redis:
             await self._redis.aclose()
 
     def _get_redis(self) -> aioredis.Redis:
-        """Get Redis client (raises if not connected)."""
+        """Redis 클라이언트를 가져옵니다 (연결되지 않은 경우 예외 발생)."""
         if self._redis is None:
             raise RuntimeError("SessionManager not connected to Redis")
         return self._redis
 
-    # API Key Management
+    # API 키 관리
 
     def _hash_api_key(self, api_key: str) -> str:
-        """Hash an API key for storage."""
+        """저장을 위해 API 키를 해시합니다."""
         return hashlib.sha256(api_key.encode()).hexdigest()
 
     def generate_api_key(self) -> str:
-        """Generate a new secure API key."""
+        """새로운 보안 API 키를 생성합니다."""
         return secrets.token_urlsafe(32)
 
     async def create_api_key(
@@ -77,31 +80,31 @@ class SessionManager:
         rate_limit: Optional[int] = None,
     ) -> tuple[str, APIKey]:
         """
-        Create a new API key.
+        새 API 키를 생성합니다.
 
         Args:
-            user_id: User ID to associate with the key.
-            name: Friendly name for the key.
-            rate_limit: Optional rate limit (requests per hour).
+            user_id: 키와 연결할 사용자 ID.
+            name: 키의 친숙한 이름.
+            rate_limit: 선택적 속도 제한 (시간당 요청 수).
 
         Returns:
-            Tuple of (plain_key, APIKey object).
+            (plain_key, APIKey 객체)의 튜플.
         """
         redis = self._get_redis()
 
         # 랜덤 토큰 생성
         random_token = secrets.token_urlsafe(32)
-        
+
         # HMAC 서명 생성 (secret_key 사용)
         signature = hmac.new(
-            self.secret_key.encode(), 
+            self.secret_key.encode(),
             random_token.encode(),
             hashlib.sha256
         ).hexdigest()
-        
+
         # API 키 = 토큰 + 서명
         plain_key = f"{random_token}.{signature}"
-        
+
         key_hash = self._hash_api_key(plain_key)
 
         api_key = APIKey(
@@ -113,7 +116,7 @@ class SessionManager:
             rate_limit=rate_limit,
         )
 
-        # Store in Redis
+        # Redis에 저장
         key_data = {
             "user_id": api_key.user_id,
             "name": api_key.name,
@@ -128,38 +131,38 @@ class SessionManager:
 
     async def validate_api_key(self, api_key: str) -> Optional[str]:
         """
-        Validate an API key and return the associated user ID.
+        API 키를 검증하고 연결된 사용자 ID를 반환합니다.
 
         Args:
-            api_key: API key to validate.
+            api_key: 검증할 API 키.
 
         Returns:
-            User ID if valid, None otherwise.
+            유효한 경우 사용자 ID, 그렇지 않으면 None.
         """
         try:
             # API 키 분리
             token, provided_signature = api_key.split(".")
-            
+
             # 서명 재생성
             expected_signature = hmac.new(
-                self.secret_key.encode(),  # ← 여기서 사용!
+                self.secret_key.encode(),
                 token.encode(),
                 hashlib.sha256
             ).hexdigest()
-            
+
             # 서명 검증 (타이밍 공격 방지)
             if not hmac.compare_digest(provided_signature, expected_signature):
                 return None  # 위조된 키
-            
+
             redis = self._get_redis()
             # Redis에서 조회
             key_hash = self._hash_api_key(api_key)
             key_data = await redis.hgetall(f"apikey:{key_hash}")
-            
+
             if not key_data or key_data.get("is_active") != "True":
                 return None
 
-            # Update last used timestamp
+            # 마지막 사용 타임스탬프 업데이트
             await redis.hset(
                 f"apikey:{key_hash}",
                 "last_used",
@@ -169,26 +172,26 @@ class SessionManager:
             return key_data.get("user_id")
         except ValueError:
             return None  # 잘못된 형식
-       
 
-    # User Profile Management
+
+    # 사용자 프로필 관리
 
     async def get_user_profile(self, user_id: str) -> UserProfile:
         """
-        Get user profile (creates default if doesn't exist).
+        사용자 프로필을 가져옵니다 (존재하지 않으면 기본값 생성).
 
         Args:
-            user_id: User ID.
+            user_id: 사용자 ID.
 
         Returns:
-            UserProfile instance.
+            UserProfile 인스턴스.
         """
         redis = self._get_redis()
 
         profile_data = await redis.hgetall(f"profile:{user_id}")
 
         if not profile_data:
-            # Create default profile
+            # 기본 프로필 생성
             profile = UserProfile(user_id=user_id)
             await self.update_user_profile(profile)
             return profile
@@ -206,10 +209,10 @@ class SessionManager:
 
     async def update_user_profile(self, profile: UserProfile) -> None:
         """
-        Update user profile in Redis.
+        Redis에서 사용자 프로필을 업데이트합니다.
 
         Args:
-            profile: UserProfile instance.
+            profile: UserProfile 인스턴스.
         """
         redis = self._get_redis()
 
@@ -230,17 +233,17 @@ class SessionManager:
 
         await redis.hset(f"profile:{profile.user_id}", mapping=profile_data)
 
-    # Conversation Session Management
+    # 대화 세션 관리
 
     async def create_session(self, user_id: str) -> ConversationSession:
         """
-        Create a new conversation session.
+        새 대화 세션을 생성합니다.
 
         Args:
-            user_id: User ID.
+            user_id: 사용자 ID.
 
         Returns:
-            New ConversationSession instance.
+            새 ConversationSession 인스턴스.
         """
         session_id = secrets.token_urlsafe(16)
         session = ConversationSession(
@@ -253,13 +256,13 @@ class SessionManager:
 
     async def get_session(self, session_id: str) -> Optional[ConversationSession]:
         """
-        Get a conversation session.
+        대화 세션을 가져옵니다.
 
         Args:
-            session_id: Session ID.
+            session_id: 세션 ID.
 
         Returns:
-            ConversationSession if exists, None otherwise.
+            존재하면 ConversationSession, 그렇지 않으면 None.
         """
         redis = self._get_redis()
 
@@ -291,10 +294,10 @@ class SessionManager:
 
     async def save_session(self, session: ConversationSession) -> None:
         """
-        Save a conversation session to Redis.
+        대화 세션을 Redis에 저장합니다.
 
         Args:
-            session: ConversationSession instance.
+            session: ConversationSession 인스턴스.
         """
         redis = self._get_redis()
 
@@ -322,19 +325,19 @@ class SessionManager:
             ex=self.session_ttl,
         )
 
-        # Also add to user's session list
+        # 사용자의 세션 목록에도 추가
         await redis.sadd(f"user_sessions:{session.user_id}", session.session_id)
 
     async def get_user_sessions(self, user_id: str, limit: int = 20) -> List[ConversationSession]:
         """
-        Get all sessions for a user.
+        사용자의 모든 세션을 가져옵니다.
 
         Args:
-            user_id: User ID.
-            limit: Maximum number of sessions to return.
+            user_id: 사용자 ID.
+            limit: 반환할 최대 세션 수.
 
         Returns:
-            List of ConversationSession instances.
+            ConversationSession 인스턴스의 리스트.
         """
         redis = self._get_redis()
 
@@ -342,19 +345,19 @@ class SessionManager:
         if not session_ids:
             return []
 
-        # Get up to `limit` most recent sessions
+        # 최대 `limit`개의 최근 세션 가져오기
         sessions = []
         for session_id in list(session_ids)[:limit]:
             session = await self.get_session(session_id)
             if session:
                 sessions.append(session)
 
-        # Sort by updated_at
+        # updated_at으로 정렬
         sessions.sort(key=lambda s: s.updated_at, reverse=True)
         return sessions[:limit]
 
     async def delete_session(self, session_id: str) -> None:
-        """Delete a conversation session."""
+        """대화 세션을 삭제합니다."""
         redis = self._get_redis()
 
         session = await self.get_session(session_id)
@@ -363,17 +366,17 @@ class SessionManager:
 
         await redis.delete(f"session:{session_id}")
 
-    # MCP Context Caching
+    # MCP 컨텍스트 캐싱
 
     async def get_mcp_cache(self, cache_key: str) -> Optional[Dict[str, Any]]:
         """
-        Get cached MCP response.
+        캐시된 MCP 응답을 가져옵니다.
 
         Args:
-            cache_key: Cache key (typically hash of query + server name).
+            cache_key: 캐시 키 (일반적으로 쿼리 + 서버 이름의 해시).
 
         Returns:
-            Cached response data if exists, None otherwise.
+            존재하면 캐시된 응답 데이터, 그렇지 않으면 None.
         """
         redis = self._get_redis()
 
@@ -384,11 +387,11 @@ class SessionManager:
 
     async def set_mcp_cache(self, cache_key: str, data: Dict[str, Any]) -> None:
         """
-        Cache MCP response.
+        MCP 응답을 캐시합니다.
 
         Args:
-            cache_key: Cache key.
-            data: Response data to cache.
+            cache_key: 캐시 키.
+            data: 캐시할 응답 데이터.
         """
         redis = self._get_redis()
 
@@ -400,14 +403,14 @@ class SessionManager:
 
     def generate_mcp_cache_key(self, server_name: str, query: str) -> str:
         """
-        Generate cache key for MCP query.
+        MCP 쿼리를 위한 캐시 키를 생성합니다.
 
         Args:
-            server_name: MCP server name.
-            query: Query string.
+            server_name: MCP 서버 이름.
+            query: 쿼리 문자열.
 
         Returns:
-            Cache key hash.
+            캐시 키 해시.
         """
         content = f"{server_name}:{query}"
         return hashlib.sha256(content.encode()).hexdigest()

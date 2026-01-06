@@ -1,5 +1,5 @@
 """
-API route definitions for the LangChain + Ollama + MCP server.
+LangChain + Ollama + MCP 서버를 위한 API 라우트 정의.
 """
 
 from typing import Dict, Optional
@@ -29,32 +29,32 @@ from app.core.session_manager import SessionManager
 router = APIRouter()
 
 
-# Global dependencies (will be set in main.py)
+# 전역 의존성 (main.py에서 설정됨)
 _query_processor: QueryProcessor | None = None
 _session_manager: SessionManager | None = None
 
 
 def set_query_processor(processor: QueryProcessor):
-    """Set the global query processor instance."""
+    """전역 쿼리 프로세서 인스턴스를 설정합니다."""
     global _query_processor
     _query_processor = processor
 
 
 def set_session_manager(manager: Optional[SessionManager]):
-    """Set the global session manager instance."""
+    """전역 세션 매니저 인스턴스를 설정합니다."""
     global _session_manager
     _session_manager = manager
 
 
 def get_query_processor() -> QueryProcessor:
-    """Dependency to get query processor."""
+    """쿼리 프로세서를 가져오는 의존성."""
     if _query_processor is None:
         raise HTTPException(status_code=500, detail="Query processor not initialized")
     return _query_processor
 
 
 def get_session_manager() -> SessionManager:
-    """Dependency to get session manager."""
+    """세션 매니저를 가져오는 의존성."""
     if _session_manager is None:
         raise HTTPException(status_code=500, detail="Session manager not initialized")
     return _session_manager
@@ -65,13 +65,13 @@ async def health_check(
     processor: QueryProcessor = Depends(get_query_processor),
 ):
     """
-    Health check endpoint.
+    헬스 체크 엔드포인트.
 
-    Checks the status of:
-    - Ollama connection
-    - MCP servers
+    다음의 상태를 확인합니다:
+    - Ollama 연결
+    - MCP 서버
 
-    Returns overall health status and details.
+    전체 헬스 상태와 세부 정보를 반환합니다.
     """
     try:
         health_status = await processor.health_check()
@@ -87,30 +87,30 @@ async def query(
     processor: QueryProcessor = Depends(get_query_processor),
 ):
     """
-    Process a user query and return AI-generated response.
+    사용자 쿼리를 처리하고 AI가 생성한 응답을 반환합니다.
 
-    This endpoint:
-    1. Gathers context from specified MCP servers (or all enabled servers if none specified)
-    2. Generates a response using the Ollama LLM with LangChain
-    3. Returns the response along with MCP context and metadata
-    4. Saves conversation history to session (if authenticated)
+    이 엔드포인트는:
+    1. 지정된 MCP 서버(또는 지정되지 않은 경우 모든 활성화된 서버)에서 컨텍스트 수집
+    2. LangChain과 Ollama LLM을 사용하여 응답 생성
+    3. MCP 컨텍스트 및 메타데이터와 함께 응답 반환
+    4. 대화 기록을 세션에 저장 (인증된 경우)
 
-    **Request Body:**
-    - `query`: User question/query (required)
-    - `session_id`: Optional session ID to continue conversation
-    - `use_conversation_history`: Include conversation history in context (default: true)
-    - `model`: Ollama model to use (default: from user profile or llama3.2)
-    - `temperature`: Generation randomness 0.0-2.0 (default: from user profile or 0.7)
-    - `max_tokens`: Maximum response length (default: from user profile or 2048)
-    - `mcp_servers`: List of MCP server names to query (default: from user profile or all enabled)
-    - `stream`: Enable streaming (must be false for this endpoint)
+    **요청 본문:**
+    - `query`: 사용자 질문/쿼리 (필수)
+    - `session_id`: 대화를 계속하기 위한 선택적 세션 ID
+    - `use_conversation_history`: 컨텍스트에 대화 기록 포함 (기본값: true)
+    - `model`: 사용할 Ollama 모델 (기본값: 사용자 프로필 또는 llama3.2)
+    - `temperature`: 생성 무작위성 0.0-2.0 (기본값: 사용자 프로필 또는 0.7)
+    - `max_tokens`: 최대 응답 길이 (기본값: 사용자 프로필 또는 2048)
+    - `mcp_servers`: 쿼리할 MCP 서버 이름 목록 (기본값: 사용자 프로필 또는 모든 활성화된 서버)
+    - `stream`: 스트리밍 활성화 (이 엔드포인트에서는 false여야 함)
 
-    **Response:**
-    - `response`: Generated AI response
-    - `model`: Model used
-    - `session_id`: Session ID (for continuing conversation)
-    - `mcp_context`: Context gathered from MCP servers
-    - `metadata`: Processing metadata (time, servers queried, etc.)
+    **응답:**
+    - `response`: 생성된 AI 응답
+    - `model`: 사용된 모델
+    - `session_id`: 세션 ID (대화 계속용)
+    - `mcp_context`: MCP 서버에서 수집된 컨텍스트
+    - `metadata`: 처리 메타데이터 (시간, 쿼리된 서버 등)
     """
     if request.stream:
         raise HTTPException(
@@ -118,7 +118,7 @@ async def query(
             detail="Streaming not supported on this endpoint. Use /api/v1/query/stream instead."
         )
 
-    # Get user_id from request state (set by authentication middleware)
+    # 요청 상태에서 user_id 가져오기 (인증 미들웨어에서 설정됨)
     user_id = getattr(http_request.state, "user_id", None)
 
     try:
@@ -146,18 +146,18 @@ async def query_stream(
     processor: QueryProcessor = Depends(get_query_processor),
 ):
     """
-    Process a user query and return streaming AI-generated response.
+    사용자 쿼리를 처리하고 스트리밍 AI 생성 응답을 반환합니다.
 
-    This endpoint returns Server-Sent Events (SSE) for streaming responses.
-    Supports conversation history and session management.
+    이 엔드포인트는 스트리밍 응답을 위한 Server-Sent Events (SSE)를 반환합니다.
+    대화 기록 및 세션 관리를 지원합니다.
 
-    **Request Body:**
-    Same as `/api/v1/query` endpoint.
+    **요청 본문:**
+    `/api/v1/query` 엔드포인트와 동일합니다.
 
-    **Response:**
-    Server-Sent Events stream of response tokens.
+    **응답:**
+    응답 토큰의 Server-Sent Events 스트림.
     """
-    # Get user_id from request state (set by authentication middleware)
+    # 요청 상태에서 user_id 가져오기 (인증 미들웨어에서 설정됨)
     user_id = getattr(http_request.state, "user_id", None)
 
     async def generate():
@@ -184,12 +184,12 @@ async def list_mcp_servers(
     processor: QueryProcessor = Depends(get_query_processor),
 ):
     """
-    List all configured MCP servers and their status.
+    설정된 모든 MCP 서버와 그 상태를 나열합니다.
 
-    Returns information about:
-    - Server name, description, type
-    - Whether enabled, running, healthy
-    - Any error messages
+    다음 정보를 반환합니다:
+    - 서버 이름, 설명, 유형
+    - 활성화 여부, 실행 중 여부, 정상 여부
+    - 오류 메시지
     """
     try:
         statuses = processor.mcp_client.get_all_statuses()
@@ -225,13 +225,13 @@ async def test_mcp_server(
     processor: QueryProcessor = Depends(get_query_processor),
 ):
     """
-    Test connection to a specific MCP server.
+    특정 MCP 서버에 대한 연결을 테스트합니다.
 
-    **Path Parameters:**
-    - `name`: MCP server name
+    **경로 매개변수:**
+    - `name`: MCP 서버 이름
 
-    **Response:**
-    Returns whether the server is healthy and any error information.
+    **응답:**
+    서버의 정상 여부 및 오류 정보를 반환합니다.
     """
     try:
         is_healthy = await processor.mcp_client.health_check(name)
@@ -260,24 +260,24 @@ async def list_models(
     processor: QueryProcessor = Depends(get_query_processor),
 ):
     """
-    List available Ollama models.
+    사용 가능한 LLM 모델을 나열합니다.
 
-    Returns list of models available on the Ollama server.
+    LLM 서버에서 사용 가능한 모델 목록을 반환합니다.
 
-    Note: This is a placeholder. Full implementation would query Ollama API.
+    참고: 이것은 플레이스홀더입니다. 전체 구현은 LLM API를 쿼리해야 합니다.
     """
-    # This is a simplified version
-    # Full implementation would query Ollama's /api/tags endpoint
+    # 간소화된 버전
+    # 전체 구현은 Ollama의 /api/tags 엔드포인트 또는 OpenAI 모델 목록을 쿼리해야 함
     return {
         "models": [
             {"name": processor.llm_service.model},
         ],
         "total": 1,
-        "note": "Currently returns configured model. Full model list requires Ollama API query."
+        "note": "Currently returns configured model. Full model list requires LLM API query."
     }
 
 
-# Session and Profile Management Endpoints
+# 세션 및 프로필 관리 엔드포인트
 
 @router.get("/api/v1/profile", response_model=UserProfileResponse, tags=["Profile"])
 async def get_profile(
@@ -285,9 +285,9 @@ async def get_profile(
     session_manager: SessionManager = Depends(get_session_manager),
 ):
     """
-    Get current user's profile.
+    현재 사용자의 프로필을 가져옵니다.
 
-    Returns user profile including default settings and preferences.
+    기본 설정 및 선호 사항을 포함한 사용자 프로필을 반환합니다.
     """
     try:
         profile = await session_manager.get_user_profile(user_id)
@@ -311,14 +311,14 @@ async def update_profile(
     session_manager: SessionManager = Depends(get_session_manager),
 ):
     """
-    Update current user's profile.
+    현재 사용자의 프로필을 업데이트합니다.
 
-    Allows updating default model, temperature, max tokens, and preferred MCP servers.
+    기본 모델, 온도, 최대 토큰 및 선호 MCP 서버를 업데이트할 수 있습니다.
     """
     try:
         profile = await session_manager.get_user_profile(user_id)
 
-        # Update fields if provided
+        # 제공된 경우 필드 업데이트
         if request.default_model is not None:
             profile.default_model = request.default_model
         if request.default_temperature is not None:
@@ -350,10 +350,10 @@ async def list_sessions(
     session_manager: SessionManager = Depends(get_session_manager),
 ):
     """
-    List conversation sessions for current user.
+    현재 사용자의 대화 세션을 나열합니다.
 
-    **Query Parameters:**
-    - `limit`: Maximum number of sessions to return (default: 20)
+    **쿼리 매개변수:**
+    - `limit`: 반환할 최대 세션 수 (기본값: 20)
     """
     try:
         sessions = await session_manager.get_user_sessions(user_id, limit=limit)
@@ -393,10 +393,10 @@ async def get_session(
     session_manager: SessionManager = Depends(get_session_manager),
 ):
     """
-    Get a specific conversation session.
+    특정 대화 세션을 가져옵니다.
 
-    **Path Parameters:**
-    - `session_id`: Session ID
+    **경로 매개변수:**
+    - `session_id`: 세션 ID
     """
     try:
         session = await session_manager.get_session(session_id)
@@ -404,7 +404,7 @@ async def get_session(
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
 
-        # Verify session belongs to user
+        # 세션이 사용자에게 속하는지 확인
         if session.user_id != user_id:
             raise HTTPException(status_code=403, detail="Access denied")
 
@@ -437,10 +437,10 @@ async def delete_session(
     session_manager: SessionManager = Depends(get_session_manager),
 ):
     """
-    Delete a conversation session.
+    대화 세션을 삭제합니다.
 
-    **Path Parameters:**
-    - `session_id`: Session ID
+    **경로 매개변수:**
+    - `session_id`: 세션 ID
     """
     try:
         session = await session_manager.get_session(session_id)
@@ -448,7 +448,7 @@ async def delete_session(
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
 
-        # Verify session belongs to user
+        # 세션이 사용자에게 속하는지 확인
         if session.user_id != user_id:
             raise HTTPException(status_code=403, detail="Access denied")
 
@@ -468,13 +468,13 @@ async def create_api_key(
     session_manager: SessionManager = Depends(get_session_manager),
 ):
     """
-    Create a new API key for the current user.
+    현재 사용자를 위한 새 API 키를 생성합니다.
 
-    **Request Body:**
-    - `name`: Friendly name for the API key
-    - `rate_limit`: Optional rate limit (requests per hour)
+    **요청 본문:**
+    - `name`: API 키의 친숙한 이름
+    - `rate_limit`: 선택적 속도 제한 (시간당 요청 수)
 
-    **⚠️ Important:** The API key is only shown once. Save it securely!
+    **⚠️ 중요:** API 키는 한 번만 표시됩니다. 안전하게 저장하세요!
     """
     try:
         plain_key, api_key = await session_manager.create_api_key(

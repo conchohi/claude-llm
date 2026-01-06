@@ -1,13 +1,13 @@
 """
-Query processor - orchestrates MCP context gathering and LangChain response generation.
+쿼리 프로세서 - MCP 컨텍스트 수집 및 LangChain 응답 생성을 조율합니다.
 """
 
 import time
 import uuid
 from typing import Dict, List, Optional, AsyncIterator
 
-from app.core.mcp_client import MCPClientManager
-from app.core.llm_service_base import BaseLLMService
+from app.core.mcp.mcp_client import MCPClientManager
+from app.core.llm.llm_service_base import BaseLLMService
 from app.core.session_manager import SessionManager
 from app.models.mcp_server import MCPResponse
 
@@ -16,8 +16,8 @@ MCP_CONTEXT_PREVIEW_LENGTH = 200
 
 class QueryProcessor:
     """
-    Main orchestrator for processing user queries.
-    Coordinates MCP context gathering and LangChain response generation.
+    사용자 쿼리 처리를 위한 주요 조율자.
+    MCP 컨텍스트 수집 및 LangChain 응답 생성을 조정합니다.
     """
 
     def __init__(
@@ -27,12 +27,12 @@ class QueryProcessor:
         session_manager: Optional[SessionManager] = None,
     ):
         """
-        Initialize the query processor.
+        쿼리 프로세서를 초기화합니다.
 
         Args:
-            mcp_client: MCP client manager instance.
-            llm_service: LLM service instance (Ollama or OpenAI).
-            session_manager: Optional session manager for conversation history.
+            mcp_client: MCP 클라이언트 매니저 인스턴스.
+            llm_service: LLM 서비스 인스턴스 (Ollama 또는 OpenAI).
+            session_manager: 대화 기록을 위한 선택적 세션 매니저.
         """
         self.mcp_client = mcp_client
         self.llm_service = llm_service
@@ -50,51 +50,51 @@ class QueryProcessor:
         max_tokens: Optional[int] = None,
     ) -> Dict:
         """
-        Process a user query with MCP context and generate response.
+        MCP 컨텍스트와 함께 사용자 쿼리를 처리하고 응답을 생성합니다.
 
         Args:
-            query: User query string.
-            user_id: User ID for session management.
-            session_id: Optional session ID. If None and user_id provided, creates new session.
-            use_conversation_history: Whether to include conversation history in context.
-            mcp_servers: Optional list of MCP server names to query. If None, uses all enabled servers.
-            model: Optional Ollama model override.
-            temperature: Optional temperature override.
-            max_tokens: Optional max tokens override.
+            query: 사용자 쿼리 문자열.
+            user_id: 세션 관리를 위한 사용자 ID.
+            session_id: 선택적 세션 ID. None이고 user_id가 제공되면 새 세션을 생성합니다.
+            use_conversation_history: 컨텍스트에 대화 기록을 포함할지 여부.
+            mcp_servers: 쿼리할 MCP 서버 이름 목록 (선택 사항). None이면 모든 활성화된 서버를 사용합니다.
+            model: 선택적 모델 재정의.
+            temperature: 선택적 온도 재정의.
+            max_tokens: 선택적 최대 토큰 재정의.
 
         Returns:
-            Dictionary containing response, MCP context, session_id, and metadata.
+            응답, MCP 컨텍스트, session_id 및 메타데이터를 포함하는 딕셔너리.
         """
         start_time = time.time()
 
-        # Step 0: Session and profile management
+        # 0단계: 세션 및 프로필 관리
         session = None
         user_profile = None
         conversation_history = ""
 
         if self.session_manager and user_id:
-            # Get or create session
+            # 세션 가져오기 또는 생성
             if session_id:
                 session = await self.session_manager.get_session(session_id)
                 if not session or session.user_id != user_id:
-                    # Invalid session, create new one
+                    # 유효하지 않은 세션, 새로 생성
                     session = await self.session_manager.create_session(user_id)
             else:
-                # Create new session
+                # 새 세션 생성
                 session = await self.session_manager.create_session(user_id)
 
-            # Get user profile for defaults
+            # 기본값을 위한 사용자 프로필 가져오기
             user_profile = await self.session_manager.get_user_profile(user_id)
 
-            # Build conversation history if enabled
+            # 활성화된 경우 대화 기록 구축
             if use_conversation_history and session and session.messages:
                 history_parts = []
-                for msg in session.messages[-MAX_CONVERSATION_HISTORY_MESSAGES:]:  # Last 10 messages for context
+                for msg in session.messages[-MAX_CONVERSATION_HISTORY_MESSAGES:]:  # 컨텍스트를 위한 최근 10개 메시지
                     role_label = "User" if msg.role == "user" else "Assistant"
                     history_parts.append(f"{role_label}: {msg.content}")
                 conversation_history = "\n".join(history_parts)
 
-            # Apply user profile defaults if not explicitly provided
+            # 명시적으로 제공되지 않은 경우 사용자 프로필 기본값 적용
             if user_profile:
                 if model is None:
                     model = user_profile.default_model
@@ -105,12 +105,12 @@ class QueryProcessor:
                 if mcp_servers is None and user_profile.preferred_mcp_servers:
                     mcp_servers = user_profile.preferred_mcp_servers
 
-        # Step 1: Gather MCP context with caching
+        # 1단계: 캐싱과 함께 MCP 컨텍스트 수집
         mcp_context = {}
         if mcp_servers:
             mcp_context = await self._gather_mcp_context(mcp_servers, query, use_cache=True)
         else:
-            # Use all enabled servers
+            # 모든 활성화된 서버 사용
             enabled_servers = [
                 name for name, status in self.mcp_client.get_all_statuses().items()
                 if status.enabled and status.running
@@ -118,14 +118,14 @@ class QueryProcessor:
             if enabled_servers:
                 mcp_context = await self._gather_mcp_context(enabled_servers, query, use_cache=True)
 
-        # Step 2: Generate LLM response with context and conversation history
+        # 2단계: 컨텍스트 및 대화 기록과 함께 LLM 응답 생성
         llm_kwargs = {}
         if temperature is not None:
             llm_kwargs["temperature"] = temperature
         if max_tokens is not None:
             llm_kwargs["max_tokens"] = max_tokens
 
-        # Include conversation history in the query context
+        # 쿼리 컨텍스트에 대화 기록 포함
         enhanced_query = query
         if conversation_history:
             enhanced_query = f"Conversation History:\n{conversation_history}\n\nCurrent Query: {query}"
@@ -137,12 +137,12 @@ class QueryProcessor:
             **llm_kwargs
         )
 
-        # Step 3: Save to session if enabled
+        # 3단계: 활성화된 경우 세션에 저장
         if session and self.session_manager:
-            # Add user message
+            # 사용자 메시지 추가
             session.add_message(role="user", content=query)
 
-            # Add assistant response with MCP context
+            # MCP 컨텍스트와 함께 어시스턴트 응답 추가
             mcp_context_summary = {
                 name: {"success": resp.success, "data_preview": str(resp.data)[:200]}
                 for name, resp in mcp_context.items()
@@ -153,10 +153,10 @@ class QueryProcessor:
                 mcp_context=mcp_context_summary,
             )
 
-            # Save session to Redis
+            # Redis에 세션 저장
             await self.session_manager.save_session(session)
 
-        # Step 4: Calculate metadata
+        # 4단계: 메타데이터 계산
         processing_time = time.time() - start_time
 
         result = {
@@ -176,7 +176,7 @@ class QueryProcessor:
             "error": llm_response.get("error") if not llm_response.get("success", True) else None,
         }
 
-        # Include session_id in response if session exists
+        # 세션이 있으면 응답에 session_id 포함
         if session:
             result["session_id"] = session.session_id
 
@@ -194,28 +194,28 @@ class QueryProcessor:
         max_tokens: Optional[int] = None,
     ) -> AsyncIterator[str]:
         """
-        Process a user query with streaming response.
+        스트리밍 응답과 함께 사용자 쿼리를 처리합니다.
 
         Args:
-            query: User query string.
-            user_id: User ID for session management.
-            session_id: Optional session ID.
-            use_conversation_history: Whether to include conversation history.
-            mcp_servers: Optional list of MCP server names to query.
-            model: Optional Ollama model override.
-            temperature: Optional temperature override.
-            max_tokens: Optional max tokens override.
+            query: 사용자 쿼리 문자열.
+            user_id: 세션 관리를 위한 사용자 ID.
+            session_id: 선택적 세션 ID.
+            use_conversation_history: 대화 기록을 포함할지 여부.
+            mcp_servers: 쿼리할 MCP 서버 이름 목록 (선택 사항).
+            model: 선택적 모델 재정의.
+            temperature: 선택적 온도 재정의.
+            max_tokens: 선택적 최대 토큰 재정의.
 
         Yields:
-            Response chunks as they are generated.
+            생성되는 응답 청크.
         """
-        # Step 0: Session and profile management
+        # 0단계: 세션 및 프로필 관리
         session = None
         user_profile = None
         conversation_history = ""
 
         if self.session_manager and user_id:
-            # Get or create session
+            # 세션 가져오기 또는 생성
             if session_id:
                 session = await self.session_manager.get_session(session_id)
                 if not session or session.user_id != user_id:
@@ -223,10 +223,10 @@ class QueryProcessor:
             else:
                 session = await self.session_manager.create_session(user_id)
 
-            # Get user profile for defaults
+            # 기본값을 위한 사용자 프로필 가져오기
             user_profile = await self.session_manager.get_user_profile(user_id)
 
-            # Build conversation history
+            # 대화 기록 구축
             if use_conversation_history and session and session.messages:
                 history_parts = []
                 for msg in session.messages[-10:]:
@@ -234,7 +234,7 @@ class QueryProcessor:
                     history_parts.append(f"{role_label}: {msg.content}")
                 conversation_history = "\n".join(history_parts)
 
-            # Apply user profile defaults
+            # 사용자 프로필 기본값 적용
             if user_profile:
                 if model is None:
                     model = user_profile.default_model
@@ -245,12 +245,12 @@ class QueryProcessor:
                 if mcp_servers is None and user_profile.preferred_mcp_servers:
                     mcp_servers = user_profile.preferred_mcp_servers
 
-        # Step 1: Gather MCP context with caching
+        # 1단계: 캐싱과 함께 MCP 컨텍스트 수집
         mcp_context = {}
         if mcp_servers:
             mcp_context = await self._gather_mcp_context(mcp_servers, query, use_cache=True)
         else:
-            # Use all enabled servers
+            # 모든 활성화된 서버 사용
             enabled_servers = [
                 name for name, status in self.mcp_client.get_all_statuses().items()
                 if status.enabled and status.running
@@ -258,19 +258,19 @@ class QueryProcessor:
             if enabled_servers:
                 mcp_context = await self._gather_mcp_context(enabled_servers, query, use_cache=True)
 
-        # Step 2: Stream LLM response with context and history
+        # 2단계: 컨텍스트 및 기록과 함께 LLM 응답 스트리밍
         llm_kwargs = {}
         if temperature is not None:
             llm_kwargs["temperature"] = temperature
         if max_tokens is not None:
             llm_kwargs["max_tokens"] = max_tokens
 
-        # Include conversation history in the query context
+        # 쿼리 컨텍스트에 대화 기록 포함
         enhanced_query = query
         if conversation_history:
             enhanced_query = f"Conversation History:\n{conversation_history}\n\nCurrent Query: {query}"
 
-        # Collect full response for session storage
+        # 세션 저장을 위해 전체 응답 수집
         full_response = ""
 
         async for chunk in self.llm_service.generate_streaming_response(
@@ -282,7 +282,7 @@ class QueryProcessor:
             full_response += chunk
             yield chunk
 
-        # Step 3: Save to session after streaming completes
+        # 3단계: 스트리밍 완료 후 세션에 저장
         if session and self.session_manager:
             session.add_message(role="user", content=query)
 
@@ -305,46 +305,46 @@ class QueryProcessor:
         use_cache: bool = False,
     ) -> Dict[str, MCPResponse]:
         """
-        Gather context from specified MCP servers with optional caching.
+        선택적 캐싱과 함께 지정된 MCP 서버에서 컨텍스트를 수집합니다.
 
         Args:
-            server_names: List of MCP server names to query.
-            query: Query string.
-            use_cache: Whether to use MCP cache (if session manager available).
+            server_names: 쿼리할 MCP 서버 이름 목록.
+            query: 쿼리 문자열.
+            use_cache: MCP 캐시를 사용할지 여부 (세션 매니저가 사용 가능한 경우).
 
         Returns:
-            Dictionary mapping server names to their responses.
+            서버 이름을 응답에 매핑하는 딕셔너리.
         """
         if not use_cache or not self.session_manager:
-            # No caching, query MCP servers directly
+            # 캐싱 없음, MCP 서버를 직접 쿼리
             return await self.mcp_client.get_context(server_names, query)
 
-        # With caching enabled
+        # 캐싱 활성화
         results = {}
 
         for server_name in server_names:
-            # Generate cache key
+            # 캐시 키 생성
             cache_key = self.session_manager.generate_mcp_cache_key(server_name, query)
 
-            # Try to get from cache
+            # 캐시에서 가져오기 시도
             cached_data = await self.session_manager.get_mcp_cache(cache_key)
 
             if cached_data is not None:
-                # Cache hit - reconstruct MCPResponse
+                # 캐시 히트 - MCPResponse 재구성
                 results[server_name] = MCPResponse(
                     success=cached_data.get("success", True),
                     data=cached_data.get("data"),
                     error=cached_data.get("error"),
-                    latency_ms=0.0,  # Cache hit has no latency
+                    latency_ms=0.0,  # 캐시 히트는 레이턴시 없음
                 )
             else:
-                # Cache miss - query MCP server
+                # 캐시 미스 - MCP 서버 쿼리
                 server_results = await self.mcp_client.get_context([server_name], query)
                 if server_name in server_results:
                     response = server_results[server_name]
                     results[server_name] = response
 
-                    # Store in cache for successful responses
+                    # 성공적인 응답을 캐시에 저장
                     if response.success:
                         cache_data = {
                             "success": response.success,
@@ -357,13 +357,13 @@ class QueryProcessor:
 
     def _format_mcp_context_for_response(self, mcp_context: Dict[str, MCPResponse]) -> Dict:
         """
-        Format MCP context for JSON response.
+        JSON 응답을 위해 MCP 컨텍스트를 포맷팅합니다.
 
         Args:
-            mcp_context: Raw MCP context dictionary.
+            mcp_context: 원시 MCP 컨텍스트 딕셔너리.
 
         Returns:
-            Formatted dictionary suitable for API response.
+            API 응답에 적합한 포맷된 딕셔너리.
         """
         formatted = {}
 
@@ -379,15 +379,15 @@ class QueryProcessor:
 
     async def health_check(self) -> Dict:
         """
-        Perform health check on the query processor and its dependencies.
+        쿼리 프로세서 및 그 의존성에 대한 헬스 체크를 수행합니다.
 
         Returns:
-            Health check status dictionary.
+            헬스 체크 상태 딕셔너리.
         """
-        # Check LLM connection (Ollama or OpenAI)
+        # LLM 연결 확인 (Ollama 또는 OpenAI)
         llm_status = await self.llm_service.test_connection()
 
-        # Check MCP servers
+        # MCP 서버 확인
         mcp_statuses = self.mcp_client.get_all_statuses()
         mcp_health = {
             name: {
@@ -400,10 +400,10 @@ class QueryProcessor:
             for name, status in mcp_statuses.items()
         }
 
-        # Overall health
+        # 전체 헬스
         all_healthy = (
             llm_status["success"]
-            and any(status.healthy for status in mcp_statuses.values() if status.enabled)
+            and all(status.healthy for status in mcp_statuses.values() if status.enabled)
         )
 
         return {

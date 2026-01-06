@@ -1,12 +1,12 @@
 """
-Factory for creating LLM service instances based on provider.
+제공자 기반 LLM 서비스 인스턴스를 생성하는 팩토리.
 """
 
 from typing import Optional
 from config.settings import Settings
-from app.core.llm_service_base import BaseLLMService
-from app.core.llm_service_ollama import OllamaLLMService
-from app.core.llm_service_openai import OpenAILLMService
+from app.core.llm.llm_service_base import BaseLLMService
+from app.core.llm.llm_service_ollama import OllamaLLMService
+from app.core.llm.llm_service_openai import OpenAILLMService
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -14,16 +14,16 @@ logger = get_logger(__name__)
 
 def create_llm_service(settings: Settings) -> BaseLLMService:
     """
-    Create an LLM service instance based on the configured provider.
+    설정된 제공자를 기반으로 LLM 서비스 인스턴스를 생성합니다.
 
     Args:
-        settings: Application settings containing LLM configuration.
+        settings: LLM 설정을 포함하는 애플리케이션 설정.
 
     Returns:
-        Initialized LLM service instance (OllamaLLMService or OpenAILLMService).
+        초기화된 LLM 서비스 인스턴스 (OllamaLLMService 또는 OpenAILLMService).
 
     Raises:
-        ValueError: If provider is not supported.
+        ValueError: 제공자가 지원되지 않는 경우.
     """
     provider = settings.llm.provider.lower()
 

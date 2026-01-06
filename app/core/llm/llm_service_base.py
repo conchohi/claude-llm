@@ -1,6 +1,6 @@
 """
-Base LLM service abstract class.
-Defines the common interface for all LLM providers.
+기본 LLM 서비스 추상 클래스.
+모든 LLM 제공자를 위한 공통 인터페이스를 정의합니다.
 """
 
 from abc import ABC, abstractmethod
@@ -17,8 +17,8 @@ logger = get_logger(__name__)
 
 class BaseLLMService(ABC):
     """
-    Abstract base class for LLM service implementations.
-    All provider-specific services should inherit from this class.
+    LLM 서비스 구현을 위한 추상 기본 클래스.
+    모든 제공자별 서비스는 이 클래스를 상속해야 합니다.
     """
 
     def __init__(
@@ -29,67 +29,67 @@ class BaseLLMService(ABC):
         prompt_path: Optional[str] = None,
     ):
         """
-        Initialize the base LLM service.
+        기본 LLM 서비스를 초기화합니다.
 
         Args:
-            model: LLM model name.
-            temperature: Generation temperature (0.0-2.0).
-            max_tokens: Maximum tokens to generate.
-            prompt_path: Optional path to custom prompt template file.
+            model: LLM 모델 이름.
+            temperature: 생성 온도 (0.0-2.0).
+            max_tokens: 생성할 최대 토큰 수.
+            prompt_path: 커스텀 프롬프트 템플릿 파일의 선택적 경로.
         """
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.llm: Optional[BaseChatModel] = None
         self.default_prompt_template = self._create_default_template(prompt_path)
-        self._base_chain = None  # Chain caching for performance
+        self._base_chain = None  # 성능을 위한 체인 캐싱
 
     @abstractmethod
     def initialize_llm(self, model: Optional[str] = None, **kwargs) -> BaseChatModel:
         """
-        Initialize or reinitialize the LLM.
-        Must be implemented by subclasses.
+        LLM을 초기화하거나 재초기화합니다.
+        서브클래스에서 구현해야 합니다.
 
         Args:
-            model: Optional model override.
-            **kwargs: Additional provider-specific parameters.
+            model: 선택적 모델 재정의.
+            **kwargs: 추가 제공자별 매개변수.
 
         Returns:
-            Initialized LLM instance.
+            초기화된 LLM 인스턴스.
         """
         pass
 
     @abstractmethod
     async def test_connection(self) -> Dict:
         """
-        Test connection to the LLM provider.
-        Must be implemented by subclasses.
+        LLM 제공자에 대한 연결을 테스트합니다.
+        서브클래스에서 구현해야 합니다.
 
         Returns:
-            Dictionary with connection test results.
+            연결 테스트 결과를 포함하는 딕셔너리.
         """
         pass
 
     @abstractmethod
     def get_provider_name(self) -> str:
         """
-        Get the provider name.
-        Must be implemented by subclasses.
+        제공자 이름을 가져옵니다.
+        서브클래스에서 구현해야 합니다.
 
         Returns:
-            Provider name string.
+            제공자 이름 문자열.
         """
         pass
 
     def _create_default_template(self, prompt_path: Optional[str]) -> ChatPromptTemplate:
         """
-        Create the default prompt template for queries with MCP context.
-        Loads template from file if prompt_path is provided, otherwise uses default.
+        MCP 컨텍스트를 포함한 쿼리를 위한 기본 프롬프트 템플릿을 생성합니다.
+        prompt_path가 제공되면 파일에서 템플릿을 로드하고, 그렇지 않으면 기본값을 사용합니다.
 
         Returns:
-            ChatPromptTemplate instance.
+            ChatPromptTemplate 인스턴스.
         """
-        # Default template as fallback
+        # 대체용 기본 템플릿
         default_template = """You are a helpful AI assistant with access to various context sources.
 
 {context_section}
@@ -98,7 +98,7 @@ User Query: {query}
 
 Please provide a comprehensive and accurate answer based on the available context. If the context doesn't contain relevant information, say so and provide the best answer you can based on your knowledge."""
 
-        # Try to load from file if path is provided
+        # 경로가 제공되면 파일에서 로드 시도
         if prompt_path:
             prompt_template_file = Path(prompt_path)
             if prompt_template_file.exists():
@@ -117,13 +117,13 @@ Please provide a comprehensive and accurate answer based on the available contex
 
     def _format_mcp_context(self, mcp_context: Dict) -> str:
         """
-        Format MCP context dictionary into a readable string for the prompt.
+        MCP 컨텍스트 딕셔너리를 프롬프트용 읽기 가능한 문자열로 포맷팅합니다.
 
         Args:
-            mcp_context: Dictionary of MCP server responses.
+            mcp_context: MCP 서버 응답의 딕셔너리.
 
         Returns:
-            Formatted context string.
+            포맷된 컨텍스트 문자열.
         """
         if not mcp_context:
             return "No additional context available."
@@ -134,7 +134,7 @@ Please provide a comprehensive and accurate answer based on the available contex
         for server_name, response in mcp_context.items():
             if response.success and response.data:
                 context_parts.append(f"\n--- From {server_name} ---")
-                # Format the data based on its structure
+                # 구조에 따라 데이터 포맷팅
                 if isinstance(response.data, dict):
                     for key, value in response.data.items():
                         context_parts.append(f"{key}: {value}")
@@ -148,11 +148,11 @@ Please provide a comprehensive and accurate answer based on the available contex
 
     def _build_chain(self):
         """
-        Build or retrieve cached LangChain processing chain.
-        Chain is cached for performance and only rebuilt when LLM changes.
+        LangChain 처리 체인을 빌드하거나 캐시된 체인을 검색합니다.
+        체인은 성능을 위해 캐시되며 LLM이 변경될 때만 재빌드됩니다.
 
         Returns:
-            LangChain LCEL chain for processing queries.
+            쿼리 처리를 위한 LangChain LCEL 체인.
         """
         if self._base_chain is None or self.llm is None:
             if self.llm is None:
@@ -173,8 +173,8 @@ Please provide a comprehensive and accurate answer based on the available contex
 
     def _invalidate_chain_cache(self):
         """
-        Invalidate the cached chain.
-        Should be called when LLM is reinitialized with different parameters.
+        캐시된 체인을 무효화합니다.
+        LLM이 다른 매개변수로 재초기화될 때 호출되어야 합니다.
         """
         self._base_chain = None
         logger.debug("Chain cache invalidated")
@@ -187,29 +187,29 @@ Please provide a comprehensive and accurate answer based on the available contex
         **kwargs
     ) -> Dict:
         """
-        Generate a response to the user query with optional MCP context.
+        선택적 MCP 컨텍스트와 함께 사용자 쿼리에 대한 응답을 생성합니다.
 
         Args:
-            query: User query string.
-            mcp_context: Optional dictionary of MCP server responses.
-            model: Optional model override.
-            **kwargs: Additional generation parameters.
+            query: 사용자 쿼리 문자열.
+            mcp_context: MCP 서버 응답의 선택적 딕셔너리.
+            model: 선택적 모델 재정의.
+            **kwargs: 추가 생성 매개변수.
 
         Returns:
-            Dictionary containing response and metadata.
+            응답 및 메타데이터를 포함하는 딕셔너리.
         """
-        # Initialize LLM if needed or if model changed
+        # 필요하거나 모델이 변경된 경우 LLM 초기화
         if self.llm is None or (model and model != self.model):
             self.initialize_llm(model, **kwargs)
-            self._invalidate_chain_cache()  # Invalidate cache when LLM changes
+            self._invalidate_chain_cache()  # LLM 변경 시 캐시 무효화
 
-        # Format MCP context
+        # MCP 컨텍스트 포맷팅
         context_section = self._format_mcp_context(mcp_context) if mcp_context else "No additional context available."
 
-        # Get cached chain
+        # 캐시된 체인 가져오기
         chain = self._build_chain()
 
-        # Invoke the chain with context and query
+        # 컨텍스트와 쿼리로 체인 호출
         try:
             response = await chain.ainvoke({
                 "context_section": context_section,
@@ -241,29 +241,29 @@ Please provide a comprehensive and accurate answer based on the available contex
         **kwargs
     ) -> AsyncIterator[str]:
         """
-        Generate a streaming response to the user query.
+        사용자 쿼리에 대한 스트리밍 응답을 생성합니다.
 
         Args:
-            query: User query string.
-            mcp_context: Optional dictionary of MCP server responses.
-            model: Optional model override.
-            **kwargs: Additional generation parameters.
+            query: 사용자 쿼리 문자열.
+            mcp_context: MCP 서버 응답의 선택적 딕셔너리.
+            model: 선택적 모델 재정의.
+            **kwargs: 추가 생성 매개변수.
 
         Yields:
-            Response tokens as they are generated.
+            생성되는 응답 토큰.
         """
-        # Initialize LLM if needed or if model changed
+        # 필요하거나 모델이 변경된 경우 LLM 초기화
         if self.llm is None or (model and model != self.model):
             self.initialize_llm(model, **kwargs)
-            self._invalidate_chain_cache()  # Invalidate cache when LLM changes
+            self._invalidate_chain_cache()  # LLM 변경 시 캐시 무효화
 
-        # Format MCP context
+        # MCP 컨텍스트 포맷팅
         context_section = self._format_mcp_context(mcp_context) if mcp_context else "No additional context available."
 
-        # Get cached chain
+        # 캐시된 체인 가져오기
         chain = self._build_chain()
 
-        # Stream the response
+        # 응답 스트리밍
         try:
             async for chunk in chain.astream({
                 "context_section": context_section,
@@ -276,12 +276,12 @@ Please provide a comprehensive and accurate answer based on the available contex
 
     def create_custom_prompt(self, template: str) -> ChatPromptTemplate:
         """
-        Create a custom prompt template.
+        커스텀 프롬프트 템플릿을 생성합니다.
 
         Args:
-            template: Custom template string with {context_section} and {query} placeholders.
+            template: {context_section} 및 {query} 플레이스홀더가 있는 커스텀 템플릿 문자열.
 
         Returns:
-            ChatPromptTemplate instance.
+            ChatPromptTemplate 인스턴스.
         """
         return ChatPromptTemplate.from_template(template)

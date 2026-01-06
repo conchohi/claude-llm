@@ -1,5 +1,5 @@
 """
-Pydantic models for API request and response validation.
+API 요청 및 응답 검증을 위한 Pydantic 모델.
 """
 
 from datetime import datetime
@@ -8,21 +8,21 @@ from pydantic import BaseModel, Field
 
 
 class QueryRequest(BaseModel):
-    """Request model for query endpoint."""
+    """쿼리 엔드포인트를 위한 요청 모델."""
 
-    query: str = Field(..., min_length=1, description="User query string")
-    session_id: Optional[str] = Field(None, description="Optional session ID for conversation continuity")
-    model: Optional[str] = Field(None, description="Ollama model to use (defaults to user profile)")
-    temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="Generation temperature (defaults to user profile)")
-    max_tokens: Optional[int] = Field(None, gt=0, description="Maximum tokens to generate (defaults to user profile)")
-    mcp_servers: Optional[List[str]] = Field(None, description="MCP servers to query for context (defaults to user profile)")
-    stream: bool = Field(default=False, description="Enable streaming response")
-    use_conversation_history: bool = Field(default=True, description="Include conversation history in context")
+    query: str = Field(..., min_length=1, description="사용자 쿼리 문자열")
+    session_id: Optional[str] = Field(None, description="대화 연속성을 위한 선택적 세션 ID")
+    model: Optional[str] = Field(None, description="사용할 Ollama 모델 (사용자 프로필 기본값)")
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="생성 온도 (사용자 프로필 기본값)")
+    max_tokens: Optional[int] = Field(None, gt=0, description="생성할 최대 토큰 수 (사용자 프로필 기본값)")
+    mcp_servers: Optional[List[str]] = Field(None, description="컨텍스트를 위해 쿼리할 MCP 서버 (사용자 프로필 기본값)")
+    stream: bool = Field(default=False, description="스트리밍 응답 활성화")
+    use_conversation_history: bool = Field(default=True, description="컨텍스트에 대화 기록 포함")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "query": "What are the top 10 products in the database?",
+                "query": "데이터베이스의 상위 10개 제품은 무엇인가요?",
                 "model": "llama3.2",
                 "temperature": 0.7,
                 "max_tokens": 2048,
@@ -33,39 +33,39 @@ class QueryRequest(BaseModel):
 
 
 class MCPContextItem(BaseModel):
-    """MCP context for a single server."""
+    """단일 서버에 대한 MCP 컨텍스트."""
 
-    success: bool = Field(..., description="Whether the query was successful")
-    data: Optional[Dict[str, Any]] = Field(None, description="Response data from the server")
-    error: Optional[str] = Field(None, description="Error message if query failed")
-    latency_ms: float = Field(..., description="Query latency in milliseconds")
+    success: bool = Field(..., description="쿼리가 성공했는지 여부")
+    data: Optional[Dict[str, Any]] = Field(None, description="서버의 응답 데이터")
+    error: Optional[str] = Field(None, description="쿼리 실패 시 오류 메시지")
+    latency_ms: float = Field(..., description="쿼리 지연 시간(밀리초)")
 
 
 class QueryMetadata(BaseModel):
-    """Metadata about query processing."""
+    """쿼리 처리에 대한 메타데이터."""
 
-    processing_time: float = Field(..., description="Total processing time in seconds")
-    mcp_servers_queried: List[str] = Field(default_factory=list, description="List of MCP servers queried")
-    mcp_servers_successful: List[str] = Field(default_factory=list, description="List of successful MCP queries")
-    success: bool = Field(default=True, description="Whether the query was successful")
-    conversation_history_used: bool = Field(default=False, description="Whether conversation history was included")
+    processing_time: float = Field(..., description="총 처리 시간(초)")
+    mcp_servers_queried: List[str] = Field(default_factory=list, description="쿼리한 MCP 서버 목록")
+    mcp_servers_successful: List[str] = Field(default_factory=list, description="성공한 MCP 쿼리 목록")
+    success: bool = Field(default=True, description="쿼리가 성공했는지 여부")
+    conversation_history_used: bool = Field(default=False, description="대화 기록이 포함되었는지 여부")
 
 
 class QueryResponse(BaseModel):
-    """Response model for query endpoint."""
+    """쿼리 엔드포인트를 위한 응답 모델."""
 
-    response: str = Field(..., description="Generated response from LLM")
-    model: str = Field(..., description="Model used for generation")
-    session_id: Optional[str] = Field(None, description="Session ID for conversation continuity")
-    mcp_context: Dict[str, MCPContextItem] = Field(default_factory=dict, description="Context from MCP servers")
-    metadata: QueryMetadata = Field(..., description="Query processing metadata")
-    success: bool = Field(default=True, description="Whether the query was successful")
-    error: Optional[str] = Field(None, description="Error message if query failed")
+    response: str = Field(..., description="LLM에서 생성된 응답")
+    model: str = Field(..., description="생성에 사용된 모델")
+    session_id: Optional[str] = Field(None, description="대화 연속성을 위한 세션 ID")
+    mcp_context: Dict[str, MCPContextItem] = Field(default_factory=dict, description="MCP 서버의 컨텍스트")
+    metadata: QueryMetadata = Field(..., description="쿼리 처리 메타데이터")
+    success: bool = Field(default=True, description="쿼리가 성공했는지 여부")
+    error: Optional[str] = Field(None, description="쿼리 실패 시 오류 메시지")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "response": "Based on the database query, here are the top 10 products...",
+                "response": "데이터베이스 쿼리를 기반으로 상위 10개 제품은...",
                 "model": "llama3.2",
                 "mcp_context": {
                     "sqlite": {
@@ -88,11 +88,11 @@ class QueryResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Response model for health check endpoint."""
+    """헬스 체크 엔드포인트를 위한 응답 모델."""
 
-    healthy: bool = Field(..., description="Overall health status")
-    ollama: Dict[str, Any] = Field(..., description="Ollama connection status")
-    mcp_servers: Dict[str, Dict[str, Any]] = Field(..., description="MCP servers status")
+    healthy: bool = Field(..., description="전체 상태")
+    ollama: Dict[str, Any] = Field(..., description="Ollama 연결 상태")
+    mcp_servers: Dict[str, Dict[str, Any]] = Field(..., description="MCP 서버 상태")
 
     class Config:
         json_schema_extra = {
@@ -100,7 +100,7 @@ class HealthResponse(BaseModel):
                 "healthy": True,
                 "ollama": {
                     "success": True,
-                    "message": "Successfully connected to Ollama",
+                    "message": "Ollama에 성공적으로 연결됨",
                     "model": "llama3.2",
                     "base_url": "http://localhost:11434",
                 },
@@ -118,120 +118,120 @@ class HealthResponse(BaseModel):
 
 
 class MCPServerInfo(BaseModel):
-    """Information about an MCP server."""
+    """MCP 서버에 대한 정보."""
 
-    name: str = Field(..., description="Server name")
-    description: str = Field(default="", description="Server description")
-    type: str = Field(..., description="Server type (process or http)")
-    enabled: bool = Field(..., description="Whether the server is enabled")
-    running: bool = Field(default=False, description="Whether the server is running")
-    healthy: bool = Field(default=False, description="Whether the server is healthy")
-    error: Optional[str] = Field(None, description="Last error message")
+    name: str = Field(..., description="서버 이름")
+    description: str = Field(default="", description="서버 설명")
+    type: str = Field(..., description="서버 타입 (process 또는 http)")
+    enabled: bool = Field(..., description="서버가 활성화되었는지 여부")
+    running: bool = Field(default=False, description="서버가 실행 중인지 여부")
+    healthy: bool = Field(default=False, description="서버가 정상인지 여부")
+    error: Optional[str] = Field(None, description="마지막 오류 메시지")
 
 
 class MCPServersListResponse(BaseModel):
-    """Response model for listing MCP servers."""
+    """MCP 서버 목록을 위한 응답 모델."""
 
-    servers: List[MCPServerInfo] = Field(..., description="List of MCP servers")
-    total: int = Field(..., description="Total number of servers")
-    enabled: int = Field(..., description="Number of enabled servers")
-    running: int = Field(..., description="Number of running servers")
+    servers: List[MCPServerInfo] = Field(..., description="MCP 서버 목록")
+    total: int = Field(..., description="총 서버 수")
+    enabled: int = Field(..., description="활성화된 서버 수")
+    running: int = Field(..., description="실행 중인 서버 수")
 
 
 class ErrorResponse(BaseModel):
-    """Error response model."""
+    """오류 응답 모델."""
 
-    error: str = Field(..., description="Error message")
-    detail: Optional[str] = Field(None, description="Detailed error information")
-    status_code: int = Field(..., description="HTTP status code")
+    error: str = Field(..., description="오류 메시지")
+    detail: Optional[str] = Field(None, description="상세 오류 정보")
+    status_code: int = Field(..., description="HTTP 상태 코드")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "error": "Bad Request",
-                "detail": "Query string cannot be empty",
+                "error": "잘못된 요청",
+                "detail": "쿼리 문자열은 비어 있을 수 없습니다",
                 "status_code": 400,
             }
         }
 
 
 class OllamaModel(BaseModel):
-    """Ollama model information."""
+    """Ollama 모델 정보."""
 
-    name: str = Field(..., description="Model name")
-    size: Optional[int] = Field(None, description="Model size in bytes")
-    modified_at: Optional[str] = Field(None, description="Last modified timestamp")
+    name: str = Field(..., description="모델 이름")
+    size: Optional[int] = Field(None, description="모델 크기(바이트)")
+    modified_at: Optional[str] = Field(None, description="마지막 수정 타임스탬프")
 
 
 class ModelsListResponse(BaseModel):
-    """Response model for listing available Ollama models."""
+    """사용 가능한 Ollama 모델 목록을 위한 응답 모델."""
 
-    models: List[OllamaModel] = Field(..., description="List of available models")
-    total: int = Field(..., description="Total number of models")
+    models: List[OllamaModel] = Field(..., description="사용 가능한 모델 목록")
+    total: int = Field(..., description="총 모델 수")
 
 
-# Session and Authentication Schemas
+# 세션 및 인증 스키마
 
 class UserProfileResponse(BaseModel):
-    """User profile response."""
+    """사용자 프로필 응답."""
 
-    user_id: str = Field(..., description="User ID")
-    default_model: str = Field(..., description="Default Ollama model")
-    default_temperature: float = Field(..., description="Default temperature")
-    default_max_tokens: int = Field(..., description="Default max tokens")
-    preferred_mcp_servers: List[str] = Field(default_factory=list, description="Preferred MCP servers")
-    created_at: Optional[datetime] = Field(None, description="Profile creation time")
-    updated_at: Optional[datetime] = Field(None, description="Last update time")
+    user_id: str = Field(..., description="사용자 ID")
+    default_model: str = Field(..., description="기본 Ollama 모델")
+    default_temperature: float = Field(..., description="기본 온도")
+    default_max_tokens: int = Field(..., description="기본 최대 토큰 수")
+    preferred_mcp_servers: List[str] = Field(default_factory=list, description="선호하는 MCP 서버")
+    created_at: Optional[datetime] = Field(None, description="프로필 생성 시간")
+    updated_at: Optional[datetime] = Field(None, description="마지막 업데이트 시간")
 
 
 class UpdateProfileRequest(BaseModel):
-    """Request to update user profile."""
+    """사용자 프로필 업데이트 요청."""
 
-    default_model: Optional[str] = Field(None, description="Default Ollama model")
-    default_temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="Default temperature")
-    default_max_tokens: Optional[int] = Field(None, gt=0, description="Default max tokens")
-    preferred_mcp_servers: Optional[List[str]] = Field(None, description="Preferred MCP servers")
+    default_model: Optional[str] = Field(None, description="기본 Ollama 모델")
+    default_temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="기본 온도")
+    default_max_tokens: Optional[int] = Field(None, gt=0, description="기본 최대 토큰 수")
+    preferred_mcp_servers: Optional[List[str]] = Field(None, description="선호하는 MCP 서버")
 
 
 class ConversationMessageResponse(BaseModel):
-    """Single conversation message."""
+    """단일 대화 메시지."""
 
-    role: str = Field(..., description="Message role (user or assistant)")
-    content: str = Field(..., description="Message content")
-    timestamp: datetime = Field(..., description="Message timestamp")
-    mcp_context: Optional[Dict[str, Any]] = Field(None, description="MCP context for this message")
+    role: str = Field(..., description="메시지 역할 (user 또는 assistant)")
+    content: str = Field(..., description="메시지 내용")
+    timestamp: datetime = Field(..., description="메시지 타임스탬프")
+    mcp_context: Optional[Dict[str, Any]] = Field(None, description="이 메시지의 MCP 컨텍스트")
 
 
 class SessionResponse(BaseModel):
-    """Conversation session response."""
+    """대화 세션 응답."""
 
-    session_id: str = Field(..., description="Session ID")
-    user_id: str = Field(..., description="User ID")
-    messages: List[ConversationMessageResponse] = Field(default_factory=list, description="Conversation messages")
-    created_at: datetime = Field(..., description="Session creation time")
-    updated_at: datetime = Field(..., description="Last update time")
-    message_count: int = Field(..., description="Total number of messages")
+    session_id: str = Field(..., description="세션 ID")
+    user_id: str = Field(..., description="사용자 ID")
+    messages: List[ConversationMessageResponse] = Field(default_factory=list, description="대화 메시지")
+    created_at: datetime = Field(..., description="세션 생성 시간")
+    updated_at: datetime = Field(..., description="마지막 업데이트 시간")
+    message_count: int = Field(..., description="총 메시지 수")
 
 
 class SessionListResponse(BaseModel):
-    """List of conversation sessions."""
+    """대화 세션 목록."""
 
-    sessions: List[SessionResponse] = Field(..., description="List of sessions")
-    total: int = Field(..., description="Total number of sessions")
+    sessions: List[SessionResponse] = Field(..., description="세션 목록")
+    total: int = Field(..., description="총 세션 수")
 
 
 class CreateAPIKeyRequest(BaseModel):
-    """Request to create a new API key."""
+    """새 API 키 생성 요청."""
 
-    name: str = Field(..., min_length=1, description="Friendly name for the API key")
-    rate_limit: Optional[int] = Field(None, gt=0, description="Optional rate limit (requests per hour)")
+    name: str = Field(..., min_length=1, description="API 키의 친근한 이름")
+    rate_limit: Optional[int] = Field(None, gt=0, description="선택적 속도 제한 (시간당 요청 수)")
 
 
 class APIKeyResponse(BaseModel):
-    """API key response."""
+    """API 키 응답."""
 
-    key: str = Field(..., description="API key (only shown once)")
-    user_id: str = Field(..., description="Associated user ID")
-    name: str = Field(..., description="API key name")
-    created_at: datetime = Field(..., description="Creation time")
-    rate_limit: Optional[int] = Field(None, description="Rate limit if set")
+    key: str = Field(..., description="API 키 (한 번만 표시)")
+    user_id: str = Field(..., description="연결된 사용자 ID")
+    name: str = Field(..., description="API 키 이름")
+    created_at: datetime = Field(..., description="생성 시간")
+    rate_limit: Optional[int] = Field(None, description="설정된 경우 속도 제한")

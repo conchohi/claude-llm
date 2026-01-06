@@ -1,5 +1,5 @@
 """
-Authentication middleware for API key validation.
+API 키 검증을 위한 인증 미들웨어.
 """
 
 from fastapi import Request, HTTPException, status
@@ -12,12 +12,12 @@ from app.core.session_manager import SessionManager
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     """
-    Middleware for API key authentication.
+    API 키 인증을 위한 미들웨어.
 
-    Validates API keys on all requests except whitelisted paths.
+    화이트리스트에 등록된 경로를 제외한 모든 요청에서 API 키를 검증합니다.
     """
 
-    # Paths that don't require authentication
+    # 인증이 필요하지 않은 경로
     EXEMPT_PATHS = [
         "/",
         "/health",
@@ -28,13 +28,13 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app, session_manager: SessionManager, auth_enabled: bool = True, api_key_header: str = "X-API-Key"):
         """
-        Initialize authentication middleware.
+        인증 미들웨어를 초기화합니다.
 
         Args:
-            app: FastAPI application.
-            session_manager: SessionManager instance.
-            auth_enabled: Whether authentication is enabled.
-            api_key_header: Header name for API key.
+            app: FastAPI 애플리케이션.
+            session_manager: SessionManager 인스턴스.
+            auth_enabled: 인증 활성화 여부.
+            api_key_header: API 키를 위한 헤더 이름.
         """
         super().__init__(app)
         self.session_manager = session_manager
@@ -43,24 +43,24 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         """
-        Process request and validate authentication.
+        요청을 처리하고 인증을 검증합니다.
 
         Args:
-            request: Incoming request.
-            call_next: Next middleware/handler.
+            request: 들어오는 요청.
+            call_next: 다음 미들웨어/핸들러.
 
         Returns:
-            Response from handler or authentication error.
+            핸들러의 응답 또는 인증 오류.
         """
-        # Skip authentication if disabled
+        # 인증이 비활성화된 경우 건너뛰기
         if not self.auth_enabled:
             return await call_next(request)
 
-        # Skip authentication for exempt paths
+        # 제외 경로에 대한 인증 건너뛰기
         if self._is_exempt_path(request.url.path):
             return await call_next(request)
 
-        # Validate API key
+        # API 키 검증
         api_key = request.headers.get(self.api_key_header)
 
         if not api_key:
@@ -73,7 +73,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 },
             )
 
-        # Validate the API key
+        # API 키 유효성 검증
         user_id = await self.session_manager.validate_api_key(api_key)
 
         if not user_id:
@@ -86,27 +86,27 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 },
             )
 
-        # Add user_id to request state for use in handlers
+        # 핸들러에서 사용할 수 있도록 요청 상태에 user_id 추가
         request.state.user_id = user_id
 
-        # Continue to next handler
+        # 다음 핸들러로 계속 진행
         return await call_next(request)
 
     def _is_exempt_path(self, path: str) -> bool:
         """
-        Check if path is exempt from authentication.
+        경로가 인증에서 제외되는지 확인합니다.
 
         Args:
-            path: Request path.
+            path: 요청 경로.
 
         Returns:
-            True if exempt, False otherwise.
+            제외되면 True, 그렇지 않으면 False.
         """
-        # Exact match
+        # 정확히 일치하는 경로
         if path in self.EXEMPT_PATHS:
             return True
 
-        # Prefix match for docs
+        # docs에 대한 접두사 일치
         if path.startswith("/docs") or path.startswith("/redoc"):
             return True
 
@@ -115,16 +115,16 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
 def get_current_user(request: Request) -> str:
     """
-    Dependency to get current user ID from request state.
+    요청 상태에서 현재 사용자 ID를 가져오는 의존성.
 
     Args:
-        request: FastAPI request.
+        request: FastAPI 요청.
 
     Returns:
-        User ID.
+        사용자 ID.
 
     Raises:
-        HTTPException: If user not authenticated.
+        HTTPException: 사용자가 인증되지 않은 경우.
     """
     user_id = getattr(request.state, "user_id", None)
     if not user_id:

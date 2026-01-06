@@ -1,6 +1,6 @@
 """
-FastAPI application entry point.
-Initializes the application, middleware, and all services.
+FastAPI 애플리케이션 진입점.
+애플리케이션, 미들웨어 및 모든 서비스를 초기화합니다.
 """
 
 from contextlib import asynccontextmanager
@@ -11,18 +11,18 @@ from fastapi.responses import JSONResponse
 
 from config.settings import get_settings
 from app.utils.logger import setup_logging, get_logger
-from app.core.mcp_loader import load_mcp_config
-from app.core.mcp_client import MCPClientManager
-from app.core.llm_service_base import BaseLLMService
-from app.core.llm_service_factory import create_llm_service
+from app.core.mcp.mcp_loader import load_mcp_config
+from app.core.mcp.mcp_client import MCPClientManager
+from app.core.llm.llm_service_base import BaseLLMService
+from app.core.llm.llm_service_factory import create_llm_service
 from app.core.query_processor import QueryProcessor
 from app.core.session_manager import SessionManager
 from app.api import routes
 from app.api.middleware import AuthenticationMiddleware
 
-# Global instances
+# 전역 인스턴스
 mcp_client: MCPClientManager | None = None
-langchain_service: BaseLLMService | None = None
+llm_service: BaseLLMService | None = None
 query_processor: QueryProcessor | None = None
 session_manager: SessionManager | None = None
 
@@ -30,10 +30,10 @@ session_manager: SessionManager | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Application lifespan context manager.
-    Handles startup and shutdown events.
+    애플리케이션 생명주기 컨텍스트 관리자.
+    시작 및 종료 이벤트를 처리합니다.
     """
-     # ✅ 1단계: 설정 로드
+    # ✅ 1단계: 설정 로드
     settings = get_settings()
 
     # ✅ 2단계: 로깅 초기화 (가장 먼저!)
@@ -46,17 +46,15 @@ async def lifespan(app: FastAPI):
 
     logger = get_logger(__name__)
 
-    # Startup
+    # 애플리케이션 시작
     logger.info("Starting application...")
 
-    global mcp_client, langchain_service, query_processor, session_manager
+    global mcp_client, llm_service, query_processor, session_manager
 
     try:
-        # Load settings
-
         logger.info("Loaded settings from environment")
 
-        # Initialize SessionManager
+        # SessionManager 초기화
         redis_url = f"redis://"
         if settings.redis.password:
             redis_url += f":{quote_plus(settings.redis.password)}@"
@@ -84,20 +82,20 @@ async def lifespan(app: FastAPI):
             )
             session_manager = None
 
-        # Initialize LangChain service using factory
+        # LLM 서비스 초기화 (팩토리 패턴 사용)
         logger.info(f"Initializing LLM service with provider: {settings.llm.provider}")
-        langchain_service = create_llm_service(settings)
+        llm_service = create_llm_service(settings)
 
-        # Test LLM connection
+        # LLM 연결 테스트
         logger.info(f"Testing {settings.llm.provider.upper()} connection...")
-        llm_test = await langchain_service.test_connection()
+        llm_test = await llm_service.test_connection()
         if llm_test["success"]:
             logger.info(f"✓ Successfully connected to {settings.llm.provider.upper()} (model: {settings.llm.model})")
         else:
             logger.error(f"✗ Failed to connect to {settings.llm.provider.upper()}: {llm_test['message']}")
             logger.warning("Application will start but queries may fail")
 
-        # Initialize MCP client
+        # MCP 클라이언트 초기화
         logger.info(f"Loading MCP configuration from {settings.mcp.config_path}")
         mcp_config_loader = load_mcp_config(settings.mcp.config_path)
         enabled_servers = mcp_config_loader.get_enabled_servers()
@@ -109,11 +107,11 @@ async def lifespan(app: FastAPI):
             max_retries=settings.mcp.max_retries,
         )
 
-        # Initialize MCP servers
+        # MCP 서버 초기화
         logger.info("Initializing MCP servers...")
         await mcp_client.initialize_servers(enabled_servers)
 
-        # Check server status
+        # 서버 상태 확인
         for server in enabled_servers:
             status = mcp_client.get_server_status(server.name)
             if status and status.running:
@@ -122,14 +120,14 @@ async def lifespan(app: FastAPI):
                 error_msg = status.error if status else "Unknown error"
                 logger.warning(f"  ✗ {server.name} ({server.type}) - failed: {error_msg}")
 
-        # Initialize query processor
+        # 쿼리 프로세서 초기화
         query_processor = QueryProcessor(
             mcp_client=mcp_client,
-            llm_service=langchain_service,
+            llm_service=llm_service,
             session_manager=session_manager,
         )
 
-        # Set query processor and session manager in routes
+        # 라우트에 쿼리 프로세서 및 세션 매니저 설정
         routes.set_query_processor(query_processor)
         routes.set_session_manager(session_manager)
 
@@ -143,7 +141,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
+    # 애플리케이션 종료
     logger.info("Shutting down application...")
 
     if mcp_client:
@@ -159,10 +157,10 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     """
-    Create and configure the FastAPI application.
+    FastAPI 애플리케이션을 생성하고 설정합니다.
 
     Returns:
-        Configured FastAPI application instance.
+        설정된 FastAPI 애플리케이션 인스턴스.
     """
     settings = get_settings()
 
@@ -178,7 +176,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS middleware
+    # CORS 미들웨어
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors.origins,
@@ -187,7 +185,7 @@ def create_app() -> FastAPI:
         allow_headers=settings.cors.allow_headers,
     )
 
-    # Authentication middleware (must be added AFTER CORS)
+    # 인증 미들웨어 (CORS 이후에 추가해야 함)
     logger = get_logger(__name__)
     if settings.auth.enabled and session_manager:
         app.add_middleware(
@@ -200,15 +198,15 @@ def create_app() -> FastAPI:
     else:
         logger.warning("⚠ Authentication is disabled")
 
-    # Include routers
+    # 라우터 포함
     app.include_router(routes.router)
 
-    # Exception handlers
+    # 예외 핸들러
     @app.exception_handler(Exception)
     async def global_exception_handler(request, exc):
         logger = get_logger(__name__)
         logger.error(f"Unhandled exception: {exc}", exc_info=True)
-        
+
         return JSONResponse(
             status_code=500,
             content={
@@ -221,14 +219,14 @@ def create_app() -> FastAPI:
     return app
 
 
-# Create the application instance
+# 애플리케이션 인스턴스 생성
 app = create_app()
 
 
-# Root endpoint
+# 루트 엔드포인트
 @app.get("/", tags=["Root"])
 async def root():
-    """Root endpoint with API information."""
+    """루트 엔드포인트 (API 정보 제공)."""
     return {
         "name": "LangChain + Ollama + MCP Server",
         "version": "1.0.0",

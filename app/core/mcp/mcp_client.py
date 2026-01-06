@@ -1,6 +1,6 @@
 """
-MCP client manager using LangChain's MCP Adapters.
-Provides high-level abstraction for MCP server communication.
+LangChain의 MCP 어댑터를 사용하는 MCP 클라이언트 매니저.
+MCP 서버 통신을 위한 고수준 추상화를 제공합니다.
 """
 
 import asyncio
@@ -11,6 +11,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 
 from app.models.mcp_server import MCPServerConfig, MCPServerStatus, MCPResponse
 from app.utils.logger import get_logger
@@ -21,36 +22,36 @@ logger = get_logger(__name__)
 
 class MCPClientManager:
     """
-    Manages MCP server connections using LangChain's MultiServerMCPClient.
-    Simplifies MCP server lifecycle and provides unified query interface.
+    LangChain의 MultiServerMCPClient를 사용하여 MCP 서버 연결을 관리합니다.
+    MCP 서버 라이프사이클을 단순화하고 통합 쿼리 인터페이스를 제공합니다.
     """
 
     def __init__(self, timeout: int = 30, max_retries: int = 3):
         """
-        Initialize the MCP client manager.
+        MCP 클라이언트 매니저를 초기화합니다.
 
         Args:
-            timeout: Timeout for server operations in seconds.
-            max_retries: Maximum number of retry attempts for failed operations.
+            timeout: 서버 작업 타임아웃(초).
+            max_retries: 실패한 작업에 대한 최대 재시도 횟수.
         """
         self.timeout = timeout
         self.max_retries = max_retries
 
-        # LangChain MCP client
+        # LangChain MCP 클라이언트
         self.mcp_client: Optional[MultiServerMCPClient] = None
 
-        # Storage for configurations and status
+        # 설정 및 상태 저장소
         self._server_configs: Dict[str, MCPServerConfig] = {}
         self._server_status: Dict[str, MCPServerStatus] = {}
 
     async def initialize_servers(self, configs: List[MCPServerConfig]) -> None:
         """
-        Initialize MCP servers from configurations using MultiServerMCPClient.
+        MultiServerMCPClient를 사용하여 설정에서 MCP 서버를 초기화합니다.
 
         Args:
-            configs: List of MCP server configurations to initialize.
+            configs: 초기화할 MCP 서버 설정 목록.
         """
-        # Store configurations
+        # 설정 저장
         for config in configs:
             self._server_configs[config.name] = config
             self._server_status[config.name] = MCPServerStatus(
@@ -59,65 +60,65 @@ class MCPClientManager:
                 type=config.type,
             )
 
-        # Build server configuration for MultiServerMCPClient
+        # MultiServerMCPClient를 위한 서버 설정 빌드
         enabled_configs = [c for c in configs if c.enabled]
 
         if not enabled_configs:
-            logger.info("No enabled MCP servers to initialize")
+            logger.info("초기화할 활성화된 MCP 서버가 없습니다")
             return
 
-        # Convert to LangChain MCP format
+        # LangChain MCP 형식으로 변환
         mcp_servers = {}
 
         for config in enabled_configs:
             if config.is_process_based():
-                # Process-based server configuration (stdio transport)
+                # 프로세스 기반 서버 설정 (stdio 전송)
                 mcp_servers[config.name] = {
                     "command": config.command,
                     "args": config.args or [],
                     "transport": "stdio",
                 }
-                # Add env if provided
+                # env가 제공된 경우 추가
                 if config.env:
                     mcp_servers[config.name]["env"] = config.env
 
             elif config.is_http_based():
-                # HTTP-based server configuration
+                # HTTP 기반 서버 설정
                 mcp_servers[config.name] = {
                     "url": config.url,
                     "transport": "http",
                 }
-                # Add headers if provided
+                # headers가 제공된 경우 추가
                 if config.headers:
                     mcp_servers[config.name]["headers"] = config.headers
 
         if not mcp_servers:
-            logger.info("No MCP servers to initialize")
+            logger.info("초기화할 MCP 서버가 없습니다")
             return
 
         try:
-            # Initialize MultiServerMCPClient
+            # MultiServerMCPClient 초기화
             self.mcp_client = MultiServerMCPClient(mcp_servers)
 
-            # Update status for all configured servers
+            # 모든 설정된 서버의 상태 업데이트
             for server_name in mcp_servers.keys():
                 try:
                     is_healthy = await self.health_check(server_name)
                     self._server_status[server_name].running = True
                     self._server_status[server_name].healthy = is_healthy
-                    self._server_status[server_name].error = None if is_healthy else "Health check failed"
+                    self._server_status[server_name].error = None if is_healthy else "상태 확인 실패"
                 except Exception as server_error:
                     self._server_status[server_name].running = False
                     self._server_status[server_name].healthy = False
                     self._server_status[server_name].error = str(server_error)
 
-            logger.info(f"✓ Initialized {len(mcp_servers)} MCP server(s) via MultiServerMCPClient")
+            logger.info(f"✓ MultiServerMCPClient를 통해 {len(mcp_servers)}개 MCP 서버 초기화 완료")
 
         except Exception as e:
-            error_msg = f"Failed to initialize MultiServerMCPClient: {e}"
+            error_msg = f"MultiServerMCPClient 초기화 실패: {e}"
             logger.error(f"✗ {error_msg}")
 
-            # Mark all servers as failed
+            # 모든 서버를 실패로 표시
             for server_name in mcp_servers.keys():
                 self._server_status[server_name].running = False
                 self._server_status[server_name].healthy = False
@@ -125,43 +126,43 @@ class MCPClientManager:
 
     async def start_server(self, name: str) -> None:
         """
-        Start a specific MCP server.
+        특정 MCP 서버를 시작합니다.
 
-        Note: With MultiServerMCPClient, all servers are initialized together.
-        This method validates server status.
+        참고: MultiServerMCPClient를 사용하면 모든 서버가 함께 초기화됩니다.
+        이 메서드는 서버 상태를 검증합니다.
 
         Args:
-            name: Server name.
+            name: 서버 이름.
 
         Raises:
-            ValueError: If server not found.
+            ValueError: 서버를 찾을 수 없는 경우.
         """
         if name not in self._server_configs:
-            raise ValueError(f"Server '{name}' not found in configuration")
+            raise ValueError(f"서버 '{name}'을(를) 설정에서 찾을 수 없습니다")
 
         config = self._server_configs[name]
 
         if not config.enabled:
             self._server_status[name].running = False
-            self._server_status[name].error = "Server is disabled in configuration"
+            self._server_status[name].error = "서버가 설정에서 비활성화되었습니다"
             return
 
-        # Check if MCP client is initialized
+        # MCP 클라이언트가 초기화되었는지 확인
         if not self.mcp_client:
-            raise RuntimeError("MultiServerMCPClient not initialized. Call initialize_servers() first.")
+            raise RuntimeError("MultiServerMCPClient가 초기화되지 않았습니다. 먼저 initialize_servers()를 호출하세요.")
 
-        # Server should already be started if enabled
+        # 활성화된 경우 서버가 이미 시작되어야 함
         self._server_status[name].running = True
         self._server_status[name].healthy = True
 
     async def stop_server(self, name: str) -> None:
         """
-        Stop a specific MCP server.
+        특정 MCP 서버를 중지합니다.
 
-        Note: With MultiServerMCPClient, servers are managed collectively.
+        참고: MultiServerMCPClient를 사용하면 서버가 집합적으로 관리됩니다.
 
         Args:
-            name: Server name.
+            name: 서버 이름.
         """
         if name in self._server_status:
             self._server_status[name].running = False
@@ -169,42 +170,42 @@ class MCPClientManager:
 
     async def query_server(self, name: str, query: str, context: Optional[Dict] = None) -> MCPResponse:
         """
-        Query a specific MCP server using LangChain tools.
+        LangChain 도구를 사용하여 특정 MCP 서버를 쿼리합니다.
 
         Args:
-            name: Server name.
-            query: Query string.
-            context: Optional context dictionary.
+            name: 서버 이름.
+            query: 쿼리 문자열.
+            context: 선택적 컨텍스트 딕셔너리.
 
         Returns:
-            MCPResponse with query results.
+            쿼리 결과가 포함된 MCPResponse.
         """
         config = self._server_configs.get(name)
         if not config:
             return MCPResponse(
                 server_name=name,
                 success=False,
-                error=f"Server '{name}' not found",
+                error=f"서버 '{name}'을(를) 찾을 수 없습니다",
             )
 
         if not config.enabled:
             return MCPResponse(
                 server_name=name,
                 success=False,
-                error=f"Server '{name}' is not enabled",
+                error=f"서버 '{name}'이(가) 활성화되지 않았습니다",
             )
 
         if not self.mcp_client:
             return MCPResponse(
                 server_name=name,
                 success=False,
-                error="MultiServerMCPClient not initialized",
+                error="MultiServerMCPClient가 초기화되지 않았습니다",
             )
 
         start_time = time.time()
 
         try:
-            # Get tools from specific server using session
+            # 세션을 사용하여 특정 서버에서 도구 가져오기
             async with self.mcp_client.session(name) as session:
                 from langchain_mcp_adapters import load_mcp_tools
 
@@ -214,54 +215,63 @@ class MCPClientManager:
                     return MCPResponse(
                         server_name=name,
                         success=False,
-                        error=f"No tools available for server '{name}'",
+                        error=f"서버 '{name}'에 사용 가능한 도구가 없습니다",
                         latency_ms=(time.time() - start_time) * 1000,
                     )
 
-                # Prepare query input with optional context
+                # 선택적 컨텍스트로 쿼리 입력 준비
                 query_input = query
                 if context:
-                    query_input = f"{query}\nAdditional context: {context}"
+                    query_input = f"{query}\n추가 컨텍스트: {context}"
 
-                # Variables to track execution
+                # 실행 추적 변수
                 result = None
                 tool_name = None
 
-                # Use LangChain Agent to automatically select and invoke the best tool
+                # LangChain Agent를 사용하여 최적의 도구를 자동으로 선택하고 호출
                 if len(tools) > 1:
-                    # Multiple tools: Use agent to select the best one
+                    # 여러 도구: 에이전트를 사용하여 최적의 도구 선택
                     try:
-                        # Create agent prompt
+                        # 에이전트 프롬프트 생성
                         agent_prompt = ChatPromptTemplate.from_messages([
-                            ("system", "You are a helpful assistant that uses available tools to answer queries. Use the most appropriate tool for the given query."),
+                            ("system", "당신은 사용 가능한 도구를 사용하여 쿼리에 답변하는 유용한 어시스턴트입니다. 주어진 쿼리에 가장 적합한 도구를 사용하세요."),
                             ("human", "{input}"),
                             ("placeholder", "{agent_scratchpad}"),
                         ])
 
-                        # Create LLM for tool selection (deterministic)
+                        # 도구 선택을 위한 LLM 생성 (결정론적)
                         settings = get_settings()
-                        llm = ChatOllama(
-                            base_url=settings.ollama.base_url,
-                            model=settings.ollama.model,
-                            temperature=0.0,  # Override to 0 for deterministic tool selection
-                        )
 
-                        # Create and execute agent
+                        if settings.llm.provider == "ollama":
+                            llm = ChatOllama(
+                                base_url=settings.ollama.base_url,
+                                model=settings.ollama.model,
+                            temperature=0.0,  # 결정론적 도구 선택을 위해 0으로 재정의
+                        ) 
+                        elif settings.llm.provider == "openai":
+                            llm = ChatOpenAI(
+                                model=settings.llm.model,
+                                temperature=0.0,  # 결정론적 도구 선택을 위해 0으로 재정의
+                                api_key=settings.openai.api_key,
+                                base_url=settings.openai.base_url,
+                            )
+
+                        # 에이전트 생성 및 실행
                         agent = create_tool_calling_agent(llm, tools, agent_prompt)
                         agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
 
                         agent_result = await agent_executor.ainvoke({"input": query_input})
                         result = agent_result.get("output", agent_result)
 
-                        # Extract tool name from agent steps if available
+                        # 사용 가능한 경우 에이전트 단계에서 도구 이름 추출
                         if "intermediate_steps" in agent_result and agent_result["intermediate_steps"]:
                             tool_name = agent_result["intermediate_steps"][0][0].tool
                         else:
                             tool_name = "agent_selected"
 
                     except Exception as agent_error:
-                        # Fallback to first tool if agent fails
-                        logger.warning(f"Agent execution failed, using first tool as fallback: {agent_error}")
+                        # 에이전트 실패 시 첫 번째 도구로 폴백
+                        logger.warning(f"에이전트 실행 실패, 폴백으로 첫 번째 도구 사용: {agent_error}")
                         tool = tools[0]
                         tool_input = {"query": query}
                         if context:
@@ -269,7 +279,7 @@ class MCPClientManager:
                         result = await tool.ainvoke(tool_input)
                         tool_name = tool.name
                 else:
-                    # Single tool: Use it directly
+                    # 단일 도구: 직접 사용
                     tool = tools[0]
                     tool_input = {"query": query}
                     if context:
@@ -295,20 +305,20 @@ class MCPClientManager:
             return MCPResponse(
                 server_name=name,
                 success=False,
-                error=f"Query failed: {str(e)}",
+                error=f"쿼리 실패: {str(e)}",
                 latency_ms=latency_ms,
             )
 
     async def get_context(self, server_names: List[str], query: str) -> Dict[str, MCPResponse]:
         """
-        Gather context from multiple MCP servers in parallel.
+        여러 MCP 서버에서 병렬로 컨텍스트를 수집합니다.
 
         Args:
-            server_names: List of server names to query.
-            query: Query string.
+            server_names: 쿼리할 서버 이름 목록.
+            query: 쿼리 문자열.
 
         Returns:
-            Dictionary mapping server names to their responses.
+            서버 이름을 응답에 매핑하는 딕셔너리.
         """
         tasks = [
             self.query_server(name, query)
@@ -332,10 +342,10 @@ class MCPClientManager:
 
     async def get_all_tools(self) -> List:
         """
-        Get all tools from all MCP servers.
+        모든 MCP 서버에서 모든 도구를 가져옵니다.
 
         Returns:
-            List of LangChain tools from all servers.
+            모든 서버의 LangChain 도구 목록.
         """
         if not self.mcp_client:
             return []
@@ -344,18 +354,18 @@ class MCPClientManager:
             tools = await self.mcp_client.get_tools()
             return tools
         except Exception as e:
-            logger.warning(f"Failed to get tools: {e}")
+            logger.warning(f"도구 가져오기 실패: {e}")
             return []
 
     async def health_check(self, name: str) -> bool:
         """
-        Check if a server is healthy.
+        서버가 정상인지 확인합니다.
 
         Args:
-            name: Server name.
+            name: 서버 이름.
 
         Returns:
-            True if server is healthy, False otherwise.
+            서버가 정상이면 True, 그렇지 않으면 False.
         """
         status = self._server_status.get(name)
         if not status or not status.enabled:
@@ -365,59 +375,59 @@ class MCPClientManager:
             return False
 
         try:
-            # Try to get tools from the server as a health check
+            # 상태 확인으로 서버에서 도구를 가져오려고 시도
             async with self.mcp_client.session(name) as session:
                 from langchain_mcp_adapters import load_mcp_tools
                 tools = await load_mcp_tools(session)
                 return tools is not None and len(tools) > 0
         except:
-            logger.warning(f"Health check failed for server '{name}'")
+            logger.warning(f"서버 '{name}'의 상태 확인 실패")
             return False
 
     def get_server_status(self, name: str) -> Optional[MCPServerStatus]:
-        """Get status of a specific server."""
+        """특정 서버의 상태를 가져옵니다."""
         return self._server_status.get(name)
 
     def get_all_statuses(self) -> Dict[str, MCPServerStatus]:
-        """Get status of all servers."""
+        """모든 서버의 상태를 가져옵니다."""
         return self._server_status.copy()
 
     async def get_available_tools(self, server_name: Optional[str] = None) -> List[str]:
         """
-        Get list of available tool names.
+        사용 가능한 도구 이름 목록을 가져옵니다.
 
         Args:
-            server_name: Optional server name to filter tools. If None, returns all tools.
+            server_name: 도구를 필터링할 선택적 서버 이름. None이면 모든 도구를 반환합니다.
 
         Returns:
-            List of tool names.
+            도구 이름 목록.
         """
         if not self.mcp_client:
             return []
 
         try:
             if server_name:
-                # Get tools from specific server
+                # 특정 서버에서 도구 가져오기
                 async with self.mcp_client.session(server_name) as session:
                     from langchain_mcp_adapters import load_mcp_tools
                     tools = await load_mcp_tools(session)
                     return [tool.name for tool in tools] if tools else []
             else:
-                # Get all tools
+                # 모든 도구 가져오기
                 tools = await self.mcp_client.get_tools()
                 return [tool.name for tool in tools] if tools else []
         except:
             return []
 
     async def shutdown(self) -> None:
-        """Shutdown all MCP servers gracefully."""
+        """모든 MCP 서버를 정상적으로 종료합니다."""
         if self.mcp_client:
-            # MultiServerMCPClient will handle cleanup when garbage collected
-            # No explicit close method needed
-            logger.info("✓ MultiServerMCPClient shut down successfully")
+            # MultiServerMCPClient는 가비지 컬렉션 시 정리를 처리합니다
+            # 명시적인 close 메서드가 필요하지 않습니다
+            logger.info("✓ MultiServerMCPClient 종료 성공")
             self.mcp_client = None
 
-        # Update all server statuses
+        # 모든 서버 상태 업데이트
         for name in self._server_status:
             self._server_status[name].running = False
             self._server_status[name].healthy = False

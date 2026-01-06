@@ -1,12 +1,12 @@
 """
-OpenAI-specific LLM service implementation.
+OpenAI 전용 LLM 서비스 구현.
 """
 
 from typing import Dict, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from app.core.llm_service_base import BaseLLMService
+from app.core.llm.llm_service_base import BaseLLMService
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 class OpenAILLMService(BaseLLMService):
     """
-    OpenAI-specific LLM service implementation.
+    OpenAI 전용 LLM 서비스 구현.
     """
 
     def __init__(
@@ -30,18 +30,18 @@ class OpenAILLMService(BaseLLMService):
         frequency_penalty: float = 0.0,
     ):
         """
-        Initialize the OpenAI LLM service.
+        OpenAI LLM 서비스를 초기화합니다.
 
         Args:
-            model: OpenAI model name.
-            temperature: Generation temperature (0.0-2.0).
-            max_tokens: Maximum tokens to generate.
-            prompt_path: Optional path to custom prompt template file.
-            api_key: OpenAI API key (Bearer token).
-            base_url: OpenAI API base URL.
-            organization: OpenAI organization ID (optional).
-            top_p: Nucleus sampling probability (0.0-1.0).
-            frequency_penalty: Penalize token repetition (-2.0 to 2.0).
+            model: OpenAI 모델 이름.
+            temperature: 생성 온도 (0.0-2.0).
+            max_tokens: 생성할 최대 토큰 수.
+            prompt_path: 커스텀 프롬프트 템플릿 파일의 선택적 경로.
+            api_key: OpenAI API 키 (Bearer 토큰).
+            base_url: OpenAI API 기본 URL.
+            organization: OpenAI 조직 ID (선택 사항).
+            top_p: 핵 샘플링 확률 (0.0-1.0).
+            frequency_penalty: 토큰 반복에 대한 페널티 (-2.0 ~ 2.0).
         """
         super().__init__(model, temperature, max_tokens, prompt_path)
         self.api_key = api_key
@@ -52,17 +52,17 @@ class OpenAILLMService(BaseLLMService):
 
     def initialize_llm(self, model: Optional[str] = None, **kwargs) -> BaseChatModel:
         """
-        Initialize or reinitialize the OpenAI LLM.
+        OpenAI LLM을 초기화하거나 재초기화합니다.
 
         Args:
-            model: Optional model override.
-            **kwargs: Additional parameters (temperature, max_tokens, top_p, frequency_penalty).
+            model: 선택적 모델 재정의.
+            **kwargs: 추가 매개변수 (temperature, max_tokens, top_p, frequency_penalty).
 
         Returns:
-            Initialized ChatOpenAI instance.
+            초기화된 ChatOpenAI 인스턴스.
 
         Raises:
-            ValueError: If API key is not provided.
+            ValueError: API 키가 제공되지 않은 경우.
         """
         model_name = model or self.model
 
@@ -90,16 +90,16 @@ class OpenAILLMService(BaseLLMService):
 
     async def test_connection(self) -> Dict:
         """
-        Test connection to OpenAI server.
+        OpenAI 서버에 대한 연결을 테스트합니다.
 
         Returns:
-            Dictionary with connection test results.
+            연결 테스트 결과를 포함하는 딕셔너리.
         """
         try:
             if self.llm is None:
                 self.initialize_llm()
 
-            # Try a simple invocation
+            # 간단한 호출 시도
             response = await self.llm.ainvoke("Hello")
 
             logger.info(f"OpenAI connection test successful")
@@ -110,7 +110,7 @@ class OpenAILLMService(BaseLLMService):
                 "provider": "openai",
                 "model": self.model,
                 "base_url": self.base_url,
-                "test_response": str(response.content)[:100],  # First 100 chars
+                "test_response": str(response.content)[:100],  # 처음 100자
             }
 
         except Exception as e:
@@ -125,7 +125,7 @@ class OpenAILLMService(BaseLLMService):
 
     def get_provider_name(self) -> str:
         """
-        Get the provider name.
+        제공자 이름을 가져옵니다.
 
         Returns:
             "openai"
