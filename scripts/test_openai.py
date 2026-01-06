@@ -84,10 +84,6 @@ async def main():
         print("  python test_openai.py sk-xxx... gpt-4")
         print("  python test_openai.py sk-xxx... gpt-3.5-turbo https://api.openai.com/v1")
         print("  python test_openai.py sk-xxx... gpt-3.5-turbo https://api.openai.com/v1 org-xxx...")
-        print()
-        print("Or set OPENAI_API_KEY environment variable:")
-        print("  export OPENAI_API_KEY=sk-xxx...")
-        print("  python test_openai.py")
         sys.exit(1)
 
     api_key = sys.argv[1]

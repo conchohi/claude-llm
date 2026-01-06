@@ -19,11 +19,11 @@ dependencies = [
     # LangChain & LLM Providers
     "langchain==0.3.27",
     "langchain-core==0.3.81",
-    "langchain-ollama==1.0.1",
+    "langchain-ollama==0.2.0",
     "langchain-openai==0.2.14",
     "langchain-community==0.3.27",
     # MCP (Model Context Protocol)
-    "mcp==1.2.0",
+    "mcp>=1.7.0",
     "langchain-mcp-adapters==0.1.0",
     # HTTP & Async
     "httpx==0.28.1",

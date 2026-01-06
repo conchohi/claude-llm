@@ -8,7 +8,6 @@ from typing import Dict, AsyncIterator, Optional
 from pathlib import Path
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.utils.logger import get_logger
@@ -43,6 +42,7 @@ class BaseLLMService(ABC):
         self.max_tokens = max_tokens
         self.llm: Optional[BaseChatModel] = None
         self.default_prompt_template = self._create_default_template(prompt_path)
+        self._base_chain = None  # Chain caching for performance
 
     @abstractmethod
     def initialize_llm(self, model: Optional[str] = None, **kwargs) -> BaseChatModel:
@@ -146,6 +146,39 @@ Please provide a comprehensive and accurate answer based on the available contex
 
         return "\n".join(context_parts)
 
+    def _build_chain(self):
+        """
+        Build or retrieve cached LangChain processing chain.
+        Chain is cached for performance and only rebuilt when LLM changes.
+
+        Returns:
+            LangChain LCEL chain for processing queries.
+        """
+        if self._base_chain is None or self.llm is None:
+            if self.llm is None:
+                raise RuntimeError("LLM must be initialized before building chain")
+
+            self._base_chain = (
+                {
+                    "context_section": lambda x: x.get("context_section", ""),
+                    "query": lambda x: x.get("query", ""),
+                }
+                | self.default_prompt_template
+                | self.llm
+                | StrOutputParser()
+            )
+            logger.info("Built new LangChain processing chain")
+
+        return self._base_chain
+
+    def _invalidate_chain_cache(self):
+        """
+        Invalidate the cached chain.
+        Should be called when LLM is reinitialized with different parameters.
+        """
+        self._base_chain = None
+        logger.debug("Chain cache invalidated")
+
     async def generate_response(
         self,
         query: str,
@@ -168,24 +201,20 @@ Please provide a comprehensive and accurate answer based on the available contex
         # Initialize LLM if needed or if model changed
         if self.llm is None or (model and model != self.model):
             self.initialize_llm(model, **kwargs)
+            self._invalidate_chain_cache()  # Invalidate cache when LLM changes
 
         # Format MCP context
         context_section = self._format_mcp_context(mcp_context) if mcp_context else "No additional context available."
 
-        # Create the chain
-        chain = (
-            {
-                "context_section": lambda x: context_section,
-                "query": RunnablePassthrough(),
-            }
-            | self.default_prompt_template
-            | self.llm
-            | StrOutputParser()
-        )
+        # Get cached chain
+        chain = self._build_chain()
 
-        # Invoke the chain
+        # Invoke the chain with context and query
         try:
-            response = await chain.ainvoke(query)
+            response = await chain.ainvoke({
+                "context_section": context_section,
+                "query": query
+            })
 
             logger.info(f"Successfully generated response for query")
 
@@ -226,24 +255,20 @@ Please provide a comprehensive and accurate answer based on the available contex
         # Initialize LLM if needed or if model changed
         if self.llm is None or (model and model != self.model):
             self.initialize_llm(model, **kwargs)
+            self._invalidate_chain_cache()  # Invalidate cache when LLM changes
 
         # Format MCP context
         context_section = self._format_mcp_context(mcp_context) if mcp_context else "No additional context available."
 
-        # Create the chain
-        chain = (
-            {
-                "context_section": lambda x: context_section,
-                "query": RunnablePassthrough(),
-            }
-            | self.default_prompt_template
-            | self.llm
-            | StrOutputParser()
-        )
+        # Get cached chain
+        chain = self._build_chain()
 
         # Stream the response
         try:
-            async for chunk in chain.astream(query):
+            async for chunk in chain.astream({
+                "context_section": context_section,
+                "query": query
+            }):
                 yield chunk
         except Exception as e:
             logger.error(f"Streaming response failed: {e}")
