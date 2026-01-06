@@ -48,3 +48,6 @@ Thumbs.db
 
 # MCP Server Outputs
 mcp_server_logs/
+
+# commit message file
+.commit_message.txt
