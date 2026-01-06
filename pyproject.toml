@@ -1,0 +1,97 @@
+[project]
+name = "langchain-ollama-mcp-server"
+version = "1.0.0"
+description = "LangChain + Ollama + MCP Client Server"
+requires-python = ">=3.11"
+authors = [
+    { name = "Lee Seonghoon", email = "lar3242@wisenut.co.kr" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+
+dependencies = [
+    # Core Framework
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.5",
+    "pydantic-settings==2.7.1",
+    # LangChain & Ollama
+    "langchain==0.3.20",
+    "langchain-core==0.3.29",
+    "langchain-ollama==1.0.1",
+    "langchain-community==0.3.19",
+    # MCP (Model Context Protocol)
+    "mcp==1.2.0",
+    "langchain-mcp-adapters>=0.1.0",
+    # HTTP & Async
+    "httpx==0.28.1",
+    "aiofiles==24.1.0",
+    # Configuration & Environment
+    "python-dotenv==1.0.1",
+    "pyyaml==6.0.2",
+    # Logging & Monitoring
+    "rich==13.9.4",
+    # Database
+    "sqlalchemy==2.0.37",
+    "aiosqlite==0.20.0",
+    # Utilities
+    "typing-extensions==4.12.2",
+    # Session & Authentication
+    "redis==5.2.1",
+    "python-jose[cryptography]==3.3.0",
+    "passlib[bcrypt]==1.7.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+    "ruff>=0.8.5",
+    "mypy>=1.14.1",
+    "pre-commit>=4.0.1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]  # Line too long (handled by formatter)
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+strict_optional = true
+
+[[tool.mypy.overrides]]
+module = [
+    "mcp.*",
+    "langchain_ollama.*",
+]
+ignore_missing_imports = true
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"

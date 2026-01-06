@@ -1,0 +1,56 @@
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "python",
+      "args": ["-m", "mcp.server.sqlite", "--db-path", "./data/app.db"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      },
+      "description": "SQLite database for structured data queries",
+      "enabled": true
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      },
+      "description": "Web search powered by Brave Search API",
+      "enabled": true
+    },
+    "filesystem": {
+      "command": "python",
+      "args": ["-m", "mcp.server.filesystem", "./data"],
+      "env": {},
+      "description": "File system access for document retrieval",
+      "enabled": false
+    },
+    "custom-server": {
+      "command": "python",
+      "args": ["./custom_mcp_servers/my_server.py"],
+      "env": {
+        "CUSTOM_CONFIG": "value"
+      },
+      "description": "Your custom MCP server implementation (file-based)",
+      "enabled": false
+    },
+    "custom-java-server": {
+      "command": "java",
+      "args": ["-jar", "./custom_mcp_servers/my_java_server.jar"],
+      "env": {
+        "JAVA_OPTS": "-Xmx512m"
+      },
+      "description": "Your custom MCP server implementation (Java-based)",
+      "enabled": false
+    },
+    "custom-http-server": {
+      "type": "http",
+      "url": "http://localhost:3001/mcp",
+      "headers": {
+        "Authorization": "Bearer ${CUSTOM_SERVER_TOKEN}"
+      },
+      "description": "Custom MCP server via HTTP (already running)",
+      "enabled": false
+    }
+  }
+}

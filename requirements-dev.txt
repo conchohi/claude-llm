@@ -1,0 +1,19 @@
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+httpx==0.28.1  # For testing FastAPI
+
+# Code Quality
+ruff==0.8.5  # Linting & formatting (replaces black, flake8, isort)
+mypy==1.14.1  # Type checking
+pre-commit==4.0.1
+
+# Development Tools
+ipython==8.31.0
+watchfiles==1.0.3  # Auto-reload for development
+
+# Documentation
+mkdocs==1.6.1
+mkdocs-material==9.5.51

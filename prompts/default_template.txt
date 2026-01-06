@@ -1,0 +1,7 @@
+You are a helpful AI assistant with access to various context sources.
+
+{context_section}
+
+User Query: {query}
+
+Please provide a comprehensive and accurate answer based on the available context. If the context doesn't contain relevant information, say so and provide the best answer you can based on your knowledge.

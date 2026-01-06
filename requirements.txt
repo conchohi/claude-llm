@@ -1,0 +1,38 @@
+# Core Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.5
+pydantic-settings==2.7.1
+
+# LangChain & Ollama
+langchain==0.3.20
+langchain-core==0.3.29
+langchain-ollama==1.0.1
+langchain-community==0.3.19
+
+# MCP (Model Context Protocol)
+mcp==1.2.0
+langchain-mcp-adapters>=0.1.0
+
+# HTTP & Async
+httpx==0.28.1
+aiofiles==24.1.0
+
+# Configuration & Environment
+python-dotenv==1.0.1
+pyyaml==6.0.2
+
+# Logging & Monitoring
+rich==13.9.4
+
+# Database (if needed for caching/storage)
+sqlalchemy==2.0.37
+aiosqlite==0.20.0
+
+# Utilities
+typing-extensions==4.12.2
+
+# Session & Authentication
+redis==5.2.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
