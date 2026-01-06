@@ -270,7 +270,7 @@ async def list_models(
     # Full implementation would query Ollama's /api/tags endpoint
     return {
         "models": [
-            {"name": processor.langchain_service.model},
+            {"name": processor.llm_service.model},
         ],
         "total": 1,
         "note": "Currently returns configured model. Full model list requires Ollama API query."

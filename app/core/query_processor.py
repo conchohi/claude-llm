@@ -7,7 +7,7 @@ import uuid
 from typing import Dict, List, Optional, AsyncIterator
 
 from app.core.mcp_client import MCPClientManager
-from app.core.langchain_service import LangChainService
+from app.core.llm_service_base import BaseLLMService
 from app.core.session_manager import SessionManager
 from app.models.mcp_server import MCPResponse
 
@@ -23,7 +23,7 @@ class QueryProcessor:
     def __init__(
         self,
         mcp_client: MCPClientManager,
-        langchain_service: LangChainService,
+        llm_service: BaseLLMService,
         session_manager: Optional[SessionManager] = None,
     ):
         """
@@ -31,11 +31,11 @@ class QueryProcessor:
 
         Args:
             mcp_client: MCP client manager instance.
-            langchain_service: LangChain service instance.
+            llm_service: LLM service instance (Ollama or OpenAI).
             session_manager: Optional session manager for conversation history.
         """
         self.mcp_client = mcp_client
-        self.langchain_service = langchain_service
+        self.llm_service = llm_service
         self.session_manager = session_manager
 
     async def process_query(
@@ -130,7 +130,7 @@ class QueryProcessor:
         if conversation_history:
             enhanced_query = f"Conversation History:\n{conversation_history}\n\nCurrent Query: {query}"
 
-        llm_response = await self.langchain_service.generate_response(
+        llm_response = await self.llm_service.generate_response(
             query=enhanced_query,
             mcp_context=mcp_context,
             model=model,
@@ -161,7 +161,7 @@ class QueryProcessor:
 
         result = {
             "response": llm_response.get("response", ""),
-            "model": llm_response.get("model", model or self.langchain_service.model),
+            "model": llm_response.get("model", model or self.llm_service.model),
             "mcp_context": self._format_mcp_context_for_response(mcp_context),
             "metadata": {
                 "processing_time": round(processing_time, 3),
@@ -273,7 +273,7 @@ class QueryProcessor:
         # Collect full response for session storage
         full_response = ""
 
-        async for chunk in self.langchain_service.generate_streaming_response(
+        async for chunk in self.llm_service.generate_streaming_response(
             query=enhanced_query,
             mcp_context=mcp_context,
             model=model,
@@ -384,8 +384,8 @@ class QueryProcessor:
         Returns:
             Health check status dictionary.
         """
-        # Check Ollama connection
-        ollama_status = await self.langchain_service.test_ollama_connection()
+        # Check LLM connection (Ollama or OpenAI)
+        llm_status = await self.llm_service.test_connection()
 
         # Check MCP servers
         mcp_statuses = self.mcp_client.get_all_statuses()
@@ -402,12 +402,12 @@ class QueryProcessor:
 
         # Overall health
         all_healthy = (
-            ollama_status["success"]
+            llm_status["success"]
             and any(status.healthy for status in mcp_statuses.values() if status.enabled)
         )
 
         return {
             "healthy": all_healthy,
-            "ollama": ollama_status,
+            "llm": llm_status,
             "mcp_servers": mcp_health,
         }

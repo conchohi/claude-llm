@@ -13,7 +13,8 @@ from config.settings import get_settings
 from app.utils.logger import setup_logging, get_logger
 from app.core.mcp_loader import load_mcp_config
 from app.core.mcp_client import MCPClientManager
-from app.core.langchain_service import LangChainService
+from app.core.llm_service_base import BaseLLMService
+from app.core.llm_service_factory import create_llm_service
 from app.core.query_processor import QueryProcessor
 from app.core.session_manager import SessionManager
 from app.api import routes
@@ -21,7 +22,7 @@ from app.api.middleware import AuthenticationMiddleware
 
 # Global instances
 mcp_client: MCPClientManager | None = None
-langchain_service: LangChainService | None = None
+langchain_service: BaseLLMService | None = None
 query_processor: QueryProcessor | None = None
 session_manager: SessionManager | None = None
 
@@ -83,22 +84,9 @@ async def lifespan(app: FastAPI):
             )
             session_manager = None
 
-        # Initialize LangChain service
-        logger.info(f"Initializing LangChain service with provider: {settings.llm.provider}")
-        langchain_service = LangChainService(
-            provider=settings.llm.provider,
-            model=settings.llm.model,
-            temperature=settings.llm.temperature,
-            max_tokens=settings.llm.max_tokens,
-            prompt_path=settings.prompt_path,
-            # Ollama-specific
-            ollama_base_url=settings.ollama.base_url,
-            ollama_keep_alive=settings.ollama.keep_alive,
-            # OpenAI-specific
-            openai_api_key=settings.openai.api_key,
-            openai_base_url=settings.openai.base_url,
-            openai_organization=settings.openai.organization,
-        )
+        # Initialize LangChain service using factory
+        logger.info(f"Initializing LLM service with provider: {settings.llm.provider}")
+        langchain_service = create_llm_service(settings)
 
         # Test LLM connection
         logger.info(f"Testing {settings.llm.provider.upper()} connection...")
@@ -137,7 +125,7 @@ async def lifespan(app: FastAPI):
         # Initialize query processor
         query_processor = QueryProcessor(
             mcp_client=mcp_client,
-            langchain_service=langchain_service,
+            llm_service=langchain_service,
             session_manager=session_manager,
         )
 

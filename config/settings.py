@@ -37,6 +37,8 @@ class OpenAISettings(BaseSettings):
     api_key: str = Field(default="", description="OpenAI API key (Bearer token)")
     base_url: str = Field(default="https://api.openai.com/v1", description="OpenAI API base URL (for compatible APIs)")
     organization: str = Field(default="", description="OpenAI organization ID (optional)")
+    top_p: float = Field(default=1.0, ge=0.0, le=1.0, description="Nucleus sampling probability (0.0-1.0)")
+    frequency_penalty: float = Field(default=0.0, ge=-2.0, le=2.0, description="Penalize token repetition (-2.0 to 2.0)")
 
     model_config = SettingsConfigDict(env_prefix="OPENAI_")
 
