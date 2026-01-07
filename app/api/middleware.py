@@ -5,7 +5,7 @@ API 키 검증을 위한 인증 미들웨어.
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from typing import Optional
+from typing import Optional, Callable
 
 from app.core.session_manager import SessionManager
 
@@ -26,18 +26,24 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         "/openapi.json",
     ]
 
-    def __init__(self, app, session_manager: SessionManager, auth_enabled: bool = True, api_key_header: str = "X-API-Key"):
+    def __init__(
+        self,
+        app,
+        session_manager_getter: Callable[[], Optional[SessionManager]],
+        auth_enabled: bool = True,
+        api_key_header: str = "X-API-Key"
+    ):
         """
         인증 미들웨어를 초기화합니다.
 
         Args:
             app: FastAPI 애플리케이션.
-            session_manager: SessionManager 인스턴스.
+            session_manager_getter: SessionManager 인스턴스를 반환하는 Callable (지연 참조).
             auth_enabled: 인증 활성화 여부.
             api_key_header: API 키를 위한 헤더 이름.
         """
         super().__init__(app)
-        self.session_manager = session_manager
+        self.session_manager_getter = session_manager_getter
         self.auth_enabled = auth_enabled
         self.api_key_header = api_key_header
 
@@ -60,6 +66,19 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         if self._is_exempt_path(request.url.path):
             return await call_next(request)
 
+        # SessionManager 가져오기 (지연 참조)
+        session_manager = self.session_manager_getter()
+
+        if not session_manager:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={
+                    "error": "Service Unavailable",
+                    "detail": "Authentication service is not available",
+                    "status_code": 503,
+                },
+            )
+
         # API 키 검증
         api_key = request.headers.get(self.api_key_header)
 
@@ -74,7 +93,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             )
 
         # API 키 유효성 검증
-        user_id = await self.session_manager.validate_api_key(api_key)
+        user_id = await session_manager.validate_api_key(api_key)
 
         if not user_id:
             return JSONResponse(
@@ -88,7 +107,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         # 핸들러에서 사용할 수 있도록 요청 상태에 user_id 추가
         request.state.user_id = user_id
-
+        
         # 다음 핸들러로 계속 진행
         return await call_next(request)
 

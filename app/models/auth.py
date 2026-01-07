@@ -14,7 +14,7 @@ class UserProfile:
     user_id: str
     """고유한 사용자 식별자 (API 키 해시 또는 사용자 ID)."""
 
-    default_model: str = "llama3.2"
+    default_model: str = ""
     """이 사용자의 기본 Ollama 모델."""
 
     default_temperature: float = 0.7

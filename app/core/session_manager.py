@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 import redis.asyncio as aioredis
 
 from app.models.auth import UserProfile, ConversationSession, ConversationMessage, APIKey
-
+from config.settings import get_settings
 
 class SessionManager:
     """
@@ -191,16 +191,21 @@ class SessionManager:
         profile_data = await redis.hgetall(f"profile:{user_id}")
 
         if not profile_data:
+            settings = get_settings()
+            
             # 기본 프로필 생성
-            profile = UserProfile(user_id=user_id)
+            profile = UserProfile(user_id=user_id,
+                                  default_model=settings.llm.default_model,
+                                  default_temperature=settings.llm.default_temperature,
+                                  default_max_tokens=settings.llm.default_max_tokens)
             await self.update_user_profile(profile)
             return profile
 
         return UserProfile(
             user_id=user_id,
-            default_model=profile_data.get("default_model", "llama3.2"),
-            default_temperature=float(profile_data.get("default_temperature", "0.7")),
-            default_max_tokens=int(profile_data.get("default_max_tokens", "2048")),
+            default_model=profile_data.get("default_model", ""),
+            default_temperature=float(profile_data.get("default_temperature", "")),
+            default_max_tokens=int(profile_data.get("default_max_tokens", "")),
             preferred_mcp_servers=json.loads(profile_data.get("preferred_mcp_servers", "[]")),
             metadata=json.loads(profile_data.get("metadata", "{}")),
             created_at=datetime.fromisoformat(profile_data["created_at"]) if profile_data.get("created_at") else None,

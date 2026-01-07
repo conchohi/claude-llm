@@ -7,7 +7,7 @@
         "PYTHONUNBUFFERED": "1"
       },
       "description": "SQLite database for structured data queries",
-      "enabled": true
+      "enabled": false
     },
     "brave-search": {
       "command": "npx",
@@ -16,7 +16,7 @@
         "BRAVE_API_KEY": "${BRAVE_API_KEY}"
       },
       "description": "Web search powered by Brave Search API",
-      "enabled": true
+      "enabled": false
     },
     "filesystem": {
       "command": "python",

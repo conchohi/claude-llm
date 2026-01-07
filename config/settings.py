@@ -19,7 +19,13 @@ class LLMSettings(BaseSettings):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="생성 온도")
     max_tokens: int = Field(default=2048, gt=0, description="생성할 최대 토큰 수")
 
-    model_config = SettingsConfigDict(env_prefix="LLM_")
+    model_config = SettingsConfigDict(
+        env_prefix="LLM_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class OllamaSettings(BaseSettings):
@@ -28,7 +34,13 @@ class OllamaSettings(BaseSettings):
     base_url: str = Field(default="http://localhost:11434", description="Ollama API 기본 URL")
     keep_alive: str = Field(default="5m", description="메모리에 모델을 로드된 상태로 유지")
 
-    model_config = SettingsConfigDict(env_prefix="OLLAMA_")
+    model_config = SettingsConfigDict(
+        env_prefix="OLLAMA_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class OpenAISettings(BaseSettings):
@@ -40,7 +52,13 @@ class OpenAISettings(BaseSettings):
     top_p: float = Field(default=1.0, ge=0.0, le=1.0, description="핵 샘플링 확률 (0.0-1.0)")
     frequency_penalty: float = Field(default=0.0, ge=-2.0, le=2.0, description="토큰 반복 패널티 (-2.0 ~ 2.0)")
 
-    model_config = SettingsConfigDict(env_prefix="OPENAI_")
+    model_config = SettingsConfigDict(
+        env_prefix="OPENAI_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class APISettings(BaseSettings):
@@ -52,7 +70,13 @@ class APISettings(BaseSettings):
     workers: int = Field(default=1, gt=0, description="워커 프로세스 수")
     debug: bool = Field(default=True, description="디버그 모드")
 
-    model_config = SettingsConfigDict(env_prefix="API_")
+    model_config = SettingsConfigDict(
+        env_prefix="API_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class CORSSettings(BaseSettings):
@@ -66,18 +90,29 @@ class CORSSettings(BaseSettings):
     allow_methods: List[str] = Field(default=["*"], description="허용된 HTTP 메서드")
     allow_headers: List[str] = Field(default=["*"], description="허용된 헤더")
 
-    model_config = SettingsConfigDict(env_prefix="CORS_")
+    model_config = SettingsConfigDict(
+        env_prefix="CORS_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class LoggingSettings(BaseSettings):
     """로깅 설정."""
 
     level: str = Field(default="INFO", description="로그 레벨")
-    format: str = Field(default="json", description="로그 형식 (json 또는 text)")
     file: str = Field(default="logs/app.log", description="로그 파일 경로")
     enable_file_logging: bool = Field(default=False, description="파일 로깅 활성화")
 
-    model_config = SettingsConfigDict(env_prefix="LOG_")
+    model_config = SettingsConfigDict(
+        env_prefix="LOG_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class MCPSettings(BaseSettings):
@@ -87,7 +122,13 @@ class MCPSettings(BaseSettings):
     timeout: int = Field(default=30, gt=0, description="MCP 서버 타임아웃(초)")
     max_retries: int = Field(default=3, ge=0, description="최대 재시도 횟수")
 
-    model_config = SettingsConfigDict(env_prefix="MCP_")
+    model_config = SettingsConfigDict(
+        env_prefix="MCP_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class RedisSettings(BaseSettings):
@@ -99,8 +140,15 @@ class RedisSettings(BaseSettings):
     password: str = Field(default="", description="Redis 비밀번호 (선택사항)")
     session_ttl: int = Field(default=3600, gt=0, description="세션 TTL(초) (1시간)")
     cache_ttl: int = Field(default=300, gt=0, description="MCP 캐시 TTL(초) (5분)")
+    max_connections: int = Field(default=10, gt=0, description="최대 Redis 연결 수")
 
-    model_config = SettingsConfigDict(env_prefix="REDIS_")
+    model_config = SettingsConfigDict(
+        env_prefix="REDIS_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class AuthSettings(BaseSettings):
@@ -110,7 +158,13 @@ class AuthSettings(BaseSettings):
     api_key_header: str = Field(default="X-API-Key", description="API 키를 위한 헤더 이름")
     secret_key: str = Field(default="your-secret-key-change-in-production", description="토큰 생성을 위한 비밀 키")
 
-    model_config = SettingsConfigDict(env_prefix="AUTH_")
+    model_config = SettingsConfigDict(
+        env_prefix="AUTH_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class Settings(BaseSettings):

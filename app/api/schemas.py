@@ -91,30 +91,8 @@ class HealthResponse(BaseModel):
     """헬스 체크 엔드포인트를 위한 응답 모델."""
 
     healthy: bool = Field(..., description="전체 상태")
-    ollama: Dict[str, Any] = Field(..., description="Ollama 연결 상태")
+    llm: Dict[str, Any] = Field(..., description="llm 연결 상태")
     mcp_servers: Dict[str, Dict[str, Any]] = Field(..., description="MCP 서버 상태")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "healthy": True,
-                "ollama": {
-                    "success": True,
-                    "message": "Ollama에 성공적으로 연결됨",
-                    "model": "llama3.2",
-                    "base_url": "http://localhost:11434",
-                },
-                "mcp_servers": {
-                    "sqlite": {
-                        "enabled": True,
-                        "running": True,
-                        "healthy": True,
-                        "type": "process",
-                        "error": None,
-                    }
-                },
-            }
-        }
 
 
 class MCPServerInfo(BaseModel):

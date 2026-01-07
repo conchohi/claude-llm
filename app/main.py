@@ -39,7 +39,6 @@ async def lifespan(app: FastAPI):
     # ✅ 2단계: 로깅 초기화 (가장 먼저!)
     setup_logging(
         level=settings.logging.level,
-        format=settings.logging.format,
         log_file=settings.logging.file,
         enable_file_logging=settings.logging.enable_file_logging
     )
@@ -187,10 +186,10 @@ def create_app() -> FastAPI:
 
     # 인증 미들웨어 (CORS 이후에 추가해야 함)
     logger = get_logger(__name__)
-    if settings.auth.enabled and session_manager:
+    if settings.auth.enabled:
         app.add_middleware(
             AuthenticationMiddleware,
-            session_manager=session_manager,
+            session_manager_getter=lambda: session_manager,
             auth_enabled=settings.auth.enabled,
             api_key_header=settings.auth.api_key_header,
         )

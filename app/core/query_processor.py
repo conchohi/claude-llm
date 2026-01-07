@@ -158,7 +158,6 @@ class QueryProcessor:
 
         # 4단계: 메타데이터 계산
         processing_time = time.time() - start_time
-
         result = {
             "response": llm_response.get("response", ""),
             "model": llm_response.get("model", model or self.llm_service.model),
