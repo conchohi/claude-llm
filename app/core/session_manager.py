@@ -195,9 +195,9 @@ class SessionManager:
             
             # 기본 프로필 생성
             profile = UserProfile(user_id=user_id,
-                                  default_model=settings.llm.default_model,
-                                  default_temperature=settings.llm.default_temperature,
-                                  default_max_tokens=settings.llm.default_max_tokens)
+                                  default_model=settings.llm.model,
+                                  default_temperature=settings.llm.temperature,
+                                  default_max_tokens=settings.llm.max_tokens)
             await self.update_user_profile(profile)
             return profile
 

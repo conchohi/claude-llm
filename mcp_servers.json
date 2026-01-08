@@ -1,29 +1,20 @@
 {
   "mcpServers": {
-    "sqlite": {
-      "command": "python",
-      "args": ["-m", "mcp.server.sqlite", "--db-path", "./data/app.db"],
-      "env": {
-        "PYTHONUNBUFFERED": "1"
-      },
-      "description": "SQLite database for structured data queries",
-      "enabled": false
-    },
-    "brave-search": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
-      "env": {
-        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
-      },
-      "description": "Web search powered by Brave Search API",
-      "enabled": false
-    },
     "filesystem": {
       "command": "python",
       "args": ["-m", "mcp.server.filesystem", "./data"],
       "env": {},
       "description": "File system access for document retrieval",
       "enabled": false
+    },
+    "tavily_search": {
+      "command": "npx",
+      "args": ["-y", "tavily-mcp@0.1.4"],
+      "env": {
+        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
+      },
+      "description": "Tavily search MCP server",
+      "enabled": true
     },
     "custom-server": {
       "command": "python",
@@ -34,14 +25,14 @@
       "description": "Your custom MCP server implementation (file-based)",
       "enabled": false
     },
-    "custom-java-server": {
+    "java-datetime": {
       "command": "java",
-      "args": ["-jar", "./custom_mcp_servers/my_java_server.jar"],
+      "args": ["-jar", "./mcp_servers/mcp-date.jar"],
       "env": {
         "JAVA_OPTS": "-Xmx512m"
       },
-      "description": "Your custom MCP server implementation (Java-based)",
-      "enabled": false
+      "description": "현재 시간을 알려주는 MCP 서버 (Java 기반)",
+      "enabled": true
     },
     "custom-http-server": {
       "type": "http",

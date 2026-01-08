@@ -172,9 +172,9 @@ async def query_stream(
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
             ):
-                yield f"data: {chunk}\n\n"
+                yield f"data: {chunk}<br>"
         except Exception as e:
-            yield f"data: Error: {str(e)}\n\n"
+            yield f"data: Error: {str(e)}<br>"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

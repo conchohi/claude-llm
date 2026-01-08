@@ -9,22 +9,28 @@ import re
 from pathlib import Path
 from typing import Dict, List
 
+from dotenv import load_dotenv
+
 from app.models.mcp_server import MCPServerConfig
 
 
 class MCPConfigLoader:
     """JSON에서 MCP 서버 설정을 로드하고 검증합니다."""
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, dotenv_path: str | None = None):
         """
         설정 로더를 초기화합니다.
 
         Args:
             config_path: MCP 서버 JSON 설정 파일 경로.
+            dotenv_path: .env 파일 경로. None인 경우 자동으로 찾습니다.
         """
         self.config_path = Path(config_path)
         self._config_data: Dict = {}
         self._servers: Dict[str, MCPServerConfig] = {}
+
+        # .env 파일 로드 (환경 변수 치환을 위해)
+        load_dotenv(dotenv_path=dotenv_path, override=False)
 
     def load_config(self) -> None:
         """

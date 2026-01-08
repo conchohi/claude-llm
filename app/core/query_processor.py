@@ -2,6 +2,7 @@
 쿼리 프로세서 - MCP 컨텍스트 수집 및 LangChain 응답 생성을 조율합니다.
 """
 
+import asyncio
 import time
 import uuid
 from typing import Dict, List, Optional, AsyncIterator
@@ -73,18 +74,25 @@ class QueryProcessor:
         conversation_history = ""
 
         if self.session_manager and user_id:
-            # 세션 가져오기 또는 생성
+            # 세션과 프로필을 병렬로 로드
+            session_task = None
             if session_id:
-                session = await self.session_manager.get_session(session_id)
+                session_task = self.session_manager.get_session(session_id)
+
+            profile_task = self.session_manager.get_user_profile(user_id)
+
+            # 병렬 실행
+            if session_task:
+                session, user_profile = await asyncio.gather(session_task, profile_task)
+                # 유효하지 않은 세션이면 새로 생성
                 if not session or session.user_id != user_id:
-                    # 유효하지 않은 세션, 새로 생성
                     session = await self.session_manager.create_session(user_id)
             else:
-                # 새 세션 생성
-                session = await self.session_manager.create_session(user_id)
-
-            # 기본값을 위한 사용자 프로필 가져오기
-            user_profile = await self.session_manager.get_user_profile(user_id)
+                # 세션 생성과 프로필 로드를 병렬로
+                session, user_profile = await asyncio.gather(
+                    self.session_manager.create_session(user_id),
+                    profile_task
+                )
 
             # 활성화된 경우 대화 기록 구축
             if use_conversation_history and session and session.messages:
@@ -105,18 +113,25 @@ class QueryProcessor:
                 if mcp_servers is None and user_profile.preferred_mcp_servers:
                     mcp_servers = user_profile.preferred_mcp_servers
 
-        # 1단계: 캐싱과 함께 MCP 컨텍스트 수집
+        # 1단계: LLM이 적절한 MCP 서버를 선택하고 해당 서버에서만 컨텍스트 수집
         mcp_context = {}
+        selected_server = None
+
         if mcp_servers:
-            mcp_context = await self._gather_mcp_context(mcp_servers, query, use_cache=True)
+            # 사용자가 특정 서버를 지정한 경우, LLM이 그 중에서 선택
+            selected_server = await self.mcp_client.select_appropriate_server(mcp_servers, query)
         else:
-            # 모든 활성화된 서버 사용
+            # 모든 활성화된 서버 중에서 선택
             enabled_servers = [
                 name for name, status in self.mcp_client.get_all_statuses().items()
                 if status.enabled and status.running
             ]
             if enabled_servers:
-                mcp_context = await self._gather_mcp_context(enabled_servers, query, use_cache=True)
+                selected_server = await self.mcp_client.select_appropriate_server(enabled_servers, query)
+
+        # 선택된 서버에만 쿼리
+        if selected_server:
+            mcp_context = await self._gather_mcp_context([selected_server], query, use_cache=True)
 
         # 2단계: 컨텍스트 및 대화 기록과 함께 LLM 응답 생성
         llm_kwargs = {}
@@ -214,21 +229,30 @@ class QueryProcessor:
         conversation_history = ""
 
         if self.session_manager and user_id:
-            # 세션 가져오기 또는 생성
+            # 세션과 프로필을 병렬로 로드
+            session_task = None
             if session_id:
-                session = await self.session_manager.get_session(session_id)
+                session_task = self.session_manager.get_session(session_id)
+
+            profile_task = self.session_manager.get_user_profile(user_id)
+
+            # 병렬 실행
+            if session_task:
+                session, user_profile = await asyncio.gather(session_task, profile_task)
+                # 유효하지 않은 세션이면 새로 생성
                 if not session or session.user_id != user_id:
                     session = await self.session_manager.create_session(user_id)
             else:
-                session = await self.session_manager.create_session(user_id)
-
-            # 기본값을 위한 사용자 프로필 가져오기
-            user_profile = await self.session_manager.get_user_profile(user_id)
+                # 세션 생성과 프로필 로드를 병렬로
+                session, user_profile = await asyncio.gather(
+                    self.session_manager.create_session(user_id),
+                    profile_task
+                )
 
             # 대화 기록 구축
             if use_conversation_history and session and session.messages:
                 history_parts = []
-                for msg in session.messages[-10:]:
+                for msg in session.messages[-MAX_CONVERSATION_HISTORY_MESSAGES:]:
                     role_label = "User" if msg.role == "user" else "Assistant"
                     history_parts.append(f"{role_label}: {msg.content}")
                 conversation_history = "\n".join(history_parts)
@@ -244,18 +268,25 @@ class QueryProcessor:
                 if mcp_servers is None and user_profile.preferred_mcp_servers:
                     mcp_servers = user_profile.preferred_mcp_servers
 
-        # 1단계: 캐싱과 함께 MCP 컨텍스트 수집
+        # 1단계: LLM이 적절한 MCP 서버를 선택하고 해당 서버에서만 컨텍스트 수집
         mcp_context = {}
+        selected_server = None
+
         if mcp_servers:
-            mcp_context = await self._gather_mcp_context(mcp_servers, query, use_cache=True)
+            # 사용자가 특정 서버를 지정한 경우, LLM이 그 중에서 선택
+            selected_server = await self.mcp_client.select_appropriate_server(mcp_servers, query)
         else:
-            # 모든 활성화된 서버 사용
+            # 모든 활성화된 서버 중에서 선택
             enabled_servers = [
                 name for name, status in self.mcp_client.get_all_statuses().items()
                 if status.enabled and status.running
             ]
             if enabled_servers:
-                mcp_context = await self._gather_mcp_context(enabled_servers, query, use_cache=True)
+                selected_server = await self.mcp_client.select_appropriate_server(enabled_servers, query)
+
+        # 선택된 서버에만 쿼리
+        if selected_server:
+            mcp_context = await self._gather_mcp_context([selected_server], query, use_cache=True)
 
         # 2단계: 컨텍스트 및 기록과 함께 LLM 응답 스트리밍
         llm_kwargs = {}
@@ -318,39 +349,63 @@ class QueryProcessor:
             # 캐싱 없음, MCP 서버를 직접 쿼리
             return await self.mcp_client.get_context(server_names, query)
 
-        # 캐싱 활성화
+        # 캐싱 활성화 - 모든 서버의 캐시를 병렬로 확인
+        cache_keys = {
+            server_name: self.session_manager.generate_mcp_cache_key(server_name, query)
+            for server_name in server_names
+        }
+
+        # 모든 캐시 키를 병렬로 조회
+        cache_tasks = [
+            self.session_manager.get_mcp_cache(cache_key)
+            for cache_key in cache_keys.values()
+        ]
+        cached_results = await asyncio.gather(*cache_tasks)
+
+        # 캐시 히트와 미스 분류
         results = {}
+        servers_to_query = []
 
-        for server_name in server_names:
-            # 캐시 키 생성
-            cache_key = self.session_manager.generate_mcp_cache_key(server_name, query)
-
-            # 캐시에서 가져오기 시도
-            cached_data = await self.session_manager.get_mcp_cache(cache_key)
-
+        for server_name, cached_data in zip(server_names, cached_results):
             if cached_data is not None:
                 # 캐시 히트 - MCPResponse 재구성
                 results[server_name] = MCPResponse(
+                    server_name=server_name,
                     success=cached_data.get("success", True),
                     data=cached_data.get("data"),
                     error=cached_data.get("error"),
                     latency_ms=0.0,  # 캐시 히트는 레이턴시 없음
                 )
             else:
-                # 캐시 미스 - MCP 서버 쿼리
-                server_results = await self.mcp_client.get_context([server_name], query)
+                # 캐시 미스
+                servers_to_query.append(server_name)
+
+        # 캐시 미스된 서버들을 병렬로 쿼리
+        if servers_to_query:
+            server_results = await self.mcp_client.get_context(servers_to_query, query)
+
+            # 결과를 results에 추가하고 캐시에 저장 (병렬로)
+            cache_save_tasks = []
+            for server_name in servers_to_query:
                 if server_name in server_results:
                     response = server_results[server_name]
                     results[server_name] = response
 
-                    # 성공적인 응답을 캐시에 저장
+                    # 성공적인 응답을 캐시에 저장 (비동기 태스크로 수집)
                     if response.success:
                         cache_data = {
                             "success": response.success,
                             "data": response.data,
                             "error": response.error,
                         }
-                        await self.session_manager.set_mcp_cache(cache_key, cache_data)
+                        cache_key = cache_keys[server_name]
+                        cache_save_tasks.append(
+                            self.session_manager.set_mcp_cache(cache_key, cache_data)
+                        )
+
+            # 모든 캐시 저장을 병렬로 실행 (결과를 기다리지 않음)
+            if cache_save_tasks:
+                await asyncio.gather(*cache_save_tasks)
 
         return results
 
