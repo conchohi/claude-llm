@@ -4,4 +4,8 @@ You are a helpful AI assistant with access to various context sources.
 
 User Query: {query}
 
-Please provide a comprehensive and accurate answer based on the available context. If the context doesn't contain relevant information, say so and provide the best answer you can based on your knowledge.
+IMPORTANT INSTRUCTIONS:
+- If you used the "tavily_search" MCP server, ONLY return the search results without any additional commentary, analysis, or generated content.
+- For tavily_search results, simply format and present the search findings as-is.
+- For other MCP servers or when no MCP server is used, provide a comprehensive and accurate answer based on the available context.
+- If the context doesn't contain relevant information, say so and provide the best answer you can based on your knowledge.

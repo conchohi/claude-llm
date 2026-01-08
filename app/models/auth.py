@@ -6,36 +6,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-
-@dataclass
-class UserProfile:
-    """사용자 프로필 및 선호 설정."""
-
-    user_id: str
-    """고유한 사용자 식별자 (API 키 해시 또는 사용자 ID)."""
-
-    default_model: str = ""
-    """이 사용자의 기본 Ollama 모델."""
-
-    default_temperature: float = 0.7
-    """기본 생성 온도."""
-
-    default_max_tokens: int = 2048
-    """기본 최대 토큰 수."""
-
-    preferred_mcp_servers: List[str] = field(default_factory=list)
-    """선호하는 MCP 서버 목록."""
-
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    """추가 사용자 메타데이터."""
-
-    created_at: Optional[datetime] = None
-    """프로필 생성 타임스탬프."""
-
-    updated_at: Optional[datetime] = None
-    """프로필 마지막 업데이트 타임스탬프."""
-
-
 @dataclass
 class ConversationMessage:
     """대화의 단일 메시지."""

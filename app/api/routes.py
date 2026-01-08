@@ -13,8 +13,6 @@ from app.api.schemas import (
     MCPServersListResponse,
     MCPServerInfo,
     ErrorResponse,
-    UserProfileResponse,
-    UpdateProfileRequest,
     SessionResponse,
     SessionListResponse,
     ConversationMessageResponse,
@@ -99,10 +97,6 @@ async def query(
     - `query`: 사용자 질문/쿼리 (필수)
     - `session_id`: 대화를 계속하기 위한 선택적 세션 ID
     - `use_conversation_history`: 컨텍스트에 대화 기록 포함 (기본값: true)
-    - `model`: 사용할 Ollama 모델 (기본값: 사용자 프로필 또는 llama3.2)
-    - `temperature`: 생성 무작위성 0.0-2.0 (기본값: 사용자 프로필 또는 0.7)
-    - `max_tokens`: 최대 응답 길이 (기본값: 사용자 프로필 또는 2048)
-    - `mcp_servers`: 쿼리할 MCP 서버 이름 목록 (기본값: 사용자 프로필 또는 모든 활성화된 서버)
     - `stream`: 스트리밍 활성화 (이 엔드포인트에서는 false여야 함)
 
     **응답:**
@@ -127,10 +121,6 @@ async def query(
             user_id=user_id,
             session_id=request.session_id,
             use_conversation_history=request.use_conversation_history,
-            mcp_servers=request.mcp_servers if request.mcp_servers else None,
-            model=request.model,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
         )
 
         return QueryResponse(**result)
@@ -167,10 +157,6 @@ async def query_stream(
                 user_id=user_id,
                 session_id=request.session_id,
                 use_conversation_history=request.use_conversation_history,
-                mcp_servers=request.mcp_servers if request.mcp_servers else None,
-                model=request.model,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
             ):
                 yield f"data: {chunk}<br>"
         except Exception as e:
@@ -276,73 +262,6 @@ async def list_models(
         "note": "Currently returns configured model. Full model list requires LLM API query."
     }
 
-
-# 세션 및 프로필 관리 엔드포인트
-
-@router.get("/api/v1/profile", response_model=UserProfileResponse, tags=["Profile"])
-async def get_profile(
-    user_id: str = Depends(get_current_user),
-    session_manager: SessionManager = Depends(get_session_manager),
-):
-    """
-    현재 사용자의 프로필을 가져옵니다.
-
-    기본 설정 및 선호 사항을 포함한 사용자 프로필을 반환합니다.
-    """
-    try:
-        profile = await session_manager.get_user_profile(user_id)
-        return UserProfileResponse(
-            user_id=profile.user_id,
-            default_model=profile.default_model,
-            default_temperature=profile.default_temperature,
-            default_max_tokens=profile.default_max_tokens,
-            preferred_mcp_servers=profile.preferred_mcp_servers,
-            created_at=profile.created_at,
-            updated_at=profile.updated_at,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get profile: {str(e)}")
-
-
-@router.put("/api/v1/profile", response_model=UserProfileResponse, tags=["Profile"])
-async def update_profile(
-    request: UpdateProfileRequest,
-    user_id: str = Depends(get_current_user),
-    session_manager: SessionManager = Depends(get_session_manager),
-):
-    """
-    현재 사용자의 프로필을 업데이트합니다.
-
-    기본 모델, 온도, 최대 토큰 및 선호 MCP 서버를 업데이트할 수 있습니다.
-    """
-    try:
-        profile = await session_manager.get_user_profile(user_id)
-
-        # 제공된 경우 필드 업데이트
-        if request.default_model is not None:
-            profile.default_model = request.default_model
-        if request.default_temperature is not None:
-            profile.default_temperature = request.default_temperature
-        if request.default_max_tokens is not None:
-            profile.default_max_tokens = request.default_max_tokens
-        if request.preferred_mcp_servers is not None:
-            profile.preferred_mcp_servers = request.preferred_mcp_servers
-
-        await session_manager.update_user_profile(profile)
-
-        return UserProfileResponse(
-            user_id=profile.user_id,
-            default_model=profile.default_model,
-            default_temperature=profile.default_temperature,
-            default_max_tokens=profile.default_max_tokens,
-            preferred_mcp_servers=profile.preferred_mcp_servers,
-            created_at=profile.created_at,
-            updated_at=profile.updated_at,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update profile: {str(e)}")
-
-
 @router.get("/api/v1/sessions", response_model=SessionListResponse, tags=["Sessions"])
 async def list_sessions(
     limit: int = 20,
@@ -385,6 +304,27 @@ async def list_sessions(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list sessions: {str(e)}")
 
+@router.post("/api/v1/session", response_model=SessionResponse, tags=["Sessions"])
+async def create_session(
+    user_id: str = Depends(get_current_user),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """
+    현재 사용자의 대화 세션을 생성합니다.
+    """
+    try:
+        session = await session_manager.create_session(user_id)
+
+        return SessionResponse(
+            session_id=session.session_id,
+            user_id=session.user_id,
+            messages=[],
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+            message_count=len(session.messages),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")          
 
 @router.get("/api/v1/sessions/{session_id}", response_model=SessionResponse, tags=["Sessions"])
 async def get_session(

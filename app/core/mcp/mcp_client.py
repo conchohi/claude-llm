@@ -5,7 +5,6 @@ MCP 서버 통신을 위한 고수준 추상화를 제공합니다.
 
 import asyncio
 import time
-from datetime import timedelta
 from typing import Dict, List, Optional
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -171,7 +170,7 @@ class MCPClientManager:
             self._server_status[name].running = False
             self._server_status[name].healthy = False
 
-    async def query_server(self, name: str, query: str, context: Optional[Dict] = None) -> MCPResponse:
+    async def query_server(self, name: str, query: str, conversation_history: str = None) -> MCPResponse:
         """
         LangChain 도구를 사용하여 특정 MCP 서버를 쿼리합니다.
 
@@ -224,8 +223,8 @@ class MCPClientManager:
 
                 # 선택적 컨텍스트로 쿼리 입력 준비
                 query_input = query
-                if context:
-                    query_input = f"{query}\n추가 컨텍스트: {context}"
+                if conversation_history:
+                    query_input = f"기존 대화내역: {conversation_history}\n현재 쿼리: {query}"
 
                 # 실행 추적 변수
                 result = None
@@ -256,7 +255,7 @@ class MCPClientManager:
 
                     # 에이전트 프롬프트 생성 (매번 동일)
                     agent_prompt = ChatPromptTemplate.from_messages([
-                        ("system", "당신은 사용 가능한 도구를 사용하여 쿼리에 답변하는 유용한 어시스턴트입니다. 주어진 쿼리에 가장 적합한 도구를 사용하세요."),
+                        ("system", "당신은 사용 가능한 도구를 사용하여 쿼리에 답변하는 유용한 어시스턴트입니다. 주어진 쿼리에 가장 적합한 도구를 사용하세요. 기존 대화내역은 참고용으로 사용하고, 현재 쿼리는 실제 사용자 요청입니다."),
                         ("human", "{input}"),
                         ("placeholder", "{agent_scratchpad}"),
                     ])
@@ -328,7 +327,7 @@ class MCPClientManager:
                 latency_ms=latency_ms,
             )
 
-    async def select_appropriate_server(self, server_names: List[str], query: str) -> Optional[str]:
+    async def select_appropriate_server(self, server_names: List[str], query: str, conversation_history: str) -> Optional[str]:
         """
         LLM을 사용하여 쿼리에 가장 적합한 MCP 서버를 선택합니다.
 
@@ -412,6 +411,9 @@ class MCPClientManager:
                 반드시 정확히 이 형식으로만 응답하세요."""),
                 ("human", """사용자 쿼리: {query}
 
+                대화 기록:
+                {conversation_history}
+
                 사용 가능한 서버:
                 {server_info}
 
@@ -422,6 +424,7 @@ class MCPClientManager:
             chain = selection_prompt | self._llm_instance | StrOutputParser()
             response = await chain.ainvoke({
                 "query": query,
+                "conversation_history": conversation_history,
                 "server_info": server_info_text
             })
 
@@ -450,8 +453,8 @@ class MCPClientManager:
             logger.error(f"서버 선택 중 오류 발생: {e}", exc_info=True)
             # 오류 시 첫 번째 서버 반환
             return server_names[0] if server_names else None
-
-    async def get_context(self, server_names: List[str], query: str) -> Dict[str, MCPResponse]:
+        
+    async def get_context(self, server_names: List[str], query: str, conversation_history: str) -> Dict[str, MCPResponse]:
         """
         여러 MCP 서버에서 병렬로 컨텍스트를 수집합니다.
 
@@ -463,7 +466,7 @@ class MCPClientManager:
             서버 이름을 응답에 매핑하는 딕셔너리.
         """
         tasks = [
-            self.query_server(name, query)
+            self.query_server(name, query, conversation_history)
             for name in server_names
         ]
 
@@ -481,23 +484,6 @@ class MCPClientManager:
                 context[name] = result
 
         return context
-
-    async def get_all_tools(self) -> List:
-        """
-        모든 MCP 서버에서 모든 도구를 가져옵니다.
-
-        Returns:
-            모든 서버의 LangChain 도구 목록.
-        """
-        if not self.mcp_client:
-            return []
-
-        try:
-            tools = await self.mcp_client.get_tools()
-            return tools
-        except Exception as e:
-            logger.warning(f"도구 가져오기 실패: {e}")
-            return []
 
     async def health_check(self, name: str) -> bool:
         """

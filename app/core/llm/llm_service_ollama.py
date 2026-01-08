@@ -41,7 +41,7 @@ class OllamaLLMService(BaseLLMService):
         self.base_url = base_url
         self.keep_alive = keep_alive
 
-    def initialize_llm(self, model: Optional[str] = None, **kwargs) -> BaseChatModel:
+    def initialize_llm(self, model: Optional[str] = None) -> BaseChatModel:
         """
         Ollama LLM을 초기화하거나 재초기화합니다.
 
@@ -59,8 +59,8 @@ class OllamaLLMService(BaseLLMService):
         self.llm = ChatOllama(
             base_url=self.base_url,
             model=model_name,
-            temperature=kwargs.get("temperature", self.temperature),
-            num_predict=kwargs.get("max_tokens", self.max_tokens),
+            temperature=self.temperature,
+            num_predict=self.max_tokens,
             keep_alive=self.keep_alive,
         )
 

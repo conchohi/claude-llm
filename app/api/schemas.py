@@ -12,10 +12,6 @@ class QueryRequest(BaseModel):
 
     query: str = Field(..., min_length=1, description="사용자 쿼리 문자열")
     session_id: Optional[str] = Field(None, description="대화 연속성을 위한 선택적 세션 ID")
-    model: Optional[str] = Field(None, description="사용할 Ollama 모델 (사용자 프로필 기본값)")
-    temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="생성 온도 (사용자 프로필 기본값)")
-    max_tokens: Optional[int] = Field(None, gt=0, description="생성할 최대 토큰 수 (사용자 프로필 기본값)")
-    mcp_servers: Optional[List[str]] = Field(None, description="컨텍스트를 위해 쿼리할 MCP 서버 (사용자 프로필 기본값)")
     stream: bool = Field(default=False, description="스트리밍 응답 활성화")
     use_conversation_history: bool = Field(default=True, description="컨텍스트에 대화 기록 포함")
 
@@ -23,10 +19,6 @@ class QueryRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "query": "데이터베이스의 상위 10개 제품은 무엇인가요?",
-                "model": "llama3.2",
-                "temperature": 0.7,
-                "max_tokens": 2048,
-                "mcp_servers": ["sqlite"],
                 "stream": False,
             }
         }
@@ -149,28 +141,6 @@ class ModelsListResponse(BaseModel):
 
 
 # 세션 및 인증 스키마
-
-class UserProfileResponse(BaseModel):
-    """사용자 프로필 응답."""
-
-    user_id: str = Field(..., description="사용자 ID")
-    default_model: str = Field(..., description="기본 Ollama 모델")
-    default_temperature: float = Field(..., description="기본 온도")
-    default_max_tokens: int = Field(..., description="기본 최대 토큰 수")
-    preferred_mcp_servers: List[str] = Field(default_factory=list, description="선호하는 MCP 서버")
-    created_at: Optional[datetime] = Field(None, description="프로필 생성 시간")
-    updated_at: Optional[datetime] = Field(None, description="마지막 업데이트 시간")
-
-
-class UpdateProfileRequest(BaseModel):
-    """사용자 프로필 업데이트 요청."""
-
-    default_model: Optional[str] = Field(None, description="기본 Ollama 모델")
-    default_temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="기본 온도")
-    default_max_tokens: Optional[int] = Field(None, gt=0, description="기본 최대 토큰 수")
-    preferred_mcp_servers: Optional[List[str]] = Field(None, description="선호하는 MCP 서버")
-
-
 class ConversationMessageResponse(BaseModel):
     """단일 대화 메시지."""
 

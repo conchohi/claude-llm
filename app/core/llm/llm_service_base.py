@@ -45,7 +45,7 @@ class BaseLLMService(ABC):
         self._base_chain = None  # 성능을 위한 체인 캐싱
 
     @abstractmethod
-    def initialize_llm(self, model: Optional[str] = None, **kwargs) -> BaseChatModel:
+    def initialize_llm(self, model: Optional[str] = None) -> BaseChatModel:
         """
         LLM을 초기화하거나 재초기화합니다.
         서브클래스에서 구현해야 합니다.
@@ -140,7 +140,7 @@ Please provide a comprehensive and accurate answer based on the available contex
                         context_parts.append(f"{key}: {value}")
                 else:
                     context_parts.append(str(response.data))
-            elif not response.success:
+            elif not response.success and response.error:
                 context_parts.append(f"\n--- {server_name} (unavailable) ---")
                 context_parts.append(f"Error: {response.error}")
 
@@ -259,7 +259,11 @@ Please provide a comprehensive and accurate answer based on the available contex
 
         # MCP 컨텍스트 포맷팅
         context_section = self._format_mcp_context(mcp_context) if mcp_context else "No additional context available."
-
+        
+        logger.info(f"Starting streaming response for query")
+        logger.info(f"Context Section: {context_section}")
+        logger.info(f"Query: {query}")
+        
         # 캐시된 체인 가져오기
         chain = self._build_chain()
 

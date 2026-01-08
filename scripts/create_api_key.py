@@ -37,7 +37,6 @@ async def create_api_key(user_id: str, key_name: str, rate_limit: int | None = N
     session_manager = SessionManager(
         redis_url=redis_url,
         session_ttl=settings.redis.session_ttl,
-        cache_ttl=settings.redis.cache_ttl,
         secert_key=settings.auth.secret_key
     )
 

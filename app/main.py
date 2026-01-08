@@ -65,7 +65,6 @@ async def lifespan(app: FastAPI):
             redis_url=redis_url,
             max_connections=settings.redis.max_connections,
             session_ttl=settings.redis.session_ttl,
-            cache_ttl=settings.redis.cache_ttl,
             secert_key=settings.auth.secret_key
         )
 

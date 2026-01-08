@@ -139,7 +139,6 @@ class RedisSettings(BaseSettings):
     db: int = Field(default=0, ge=0, description="Redis 데이터베이스 번호")
     password: str = Field(default="", description="Redis 비밀번호 (선택사항)")
     session_ttl: int = Field(default=3600, gt=0, description="세션 TTL(초) (1시간)")
-    cache_ttl: int = Field(default=300, gt=0, description="MCP 캐시 TTL(초) (5분)")
     max_connections: int = Field(default=10, gt=0, description="최대 Redis 연결 수")
 
     model_config = SettingsConfigDict(

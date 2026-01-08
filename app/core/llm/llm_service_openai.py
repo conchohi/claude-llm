@@ -50,7 +50,7 @@ class OpenAILLMService(BaseLLMService):
         self.top_p = top_p
         self.frequency_penalty = frequency_penalty
 
-    def initialize_llm(self, model: Optional[str] = None, **kwargs) -> BaseChatModel:
+    def initialize_llm(self, model: Optional[str] = None) -> BaseChatModel:
         """
         OpenAI LLM을 초기화하거나 재초기화합니다.
 
@@ -73,10 +73,10 @@ class OpenAILLMService(BaseLLMService):
 
         openai_kwargs = {
             "model": model_name,
-            "temperature": kwargs.get("temperature", self.temperature),
-            "max_tokens": kwargs.get("max_tokens", self.max_tokens),
-            "top_p": kwargs.get("top_p", self.top_p),
-            "frequency_penalty": kwargs.get("frequency_penalty", self.frequency_penalty),
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "top_p": self.top_p,
+            "frequency_penalty": self.frequency_penalty,
             "api_key": self.api_key,
             "base_url": self.base_url,
         }
