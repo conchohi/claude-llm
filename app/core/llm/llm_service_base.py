@@ -52,7 +52,6 @@ class BaseLLMService(ABC):
 
         Args:
             model: 선택적 모델 재정의.
-            **kwargs: 추가 제공자별 매개변수.
 
         Returns:
             초기화된 LLM 인스턴스.
@@ -165,10 +164,10 @@ Please provide a comprehensive and accurate answer based on the available contex
         Returns:
             쿼리 처리를 위한 LangChain LCEL 체인.
         """
-        if self._base_chain is None or self.llm is None:
-            if self.llm is None:
-                raise RuntimeError("LLM must be initialized before building chain")
-
+        if self.llm is None:
+            raise RuntimeError("LLM must be initialized before building chain")
+        
+        if self._base_chain is None:
             self._base_chain = (
                 {
                     "context_section": lambda x: x.get("context_section", ""),
@@ -195,7 +194,6 @@ Please provide a comprehensive and accurate answer based on the available contex
         query: str,
         mcp_context: Optional[Dict] = None,
         model: Optional[str] = None,
-        **kwargs
     ) -> Dict:
         """
         선택적 MCP 컨텍스트와 함께 사용자 쿼리에 대한 응답을 생성합니다.
@@ -211,7 +209,7 @@ Please provide a comprehensive and accurate answer based on the available contex
         """
         # 필요하거나 모델이 변경된 경우 LLM 초기화
         if self.llm is None or (model and model != self.model):
-            self.initialize_llm(model, **kwargs)
+            self.initialize_llm(model)
             self._invalidate_chain_cache()  # LLM 변경 시 캐시 무효화
 
         # MCP 컨텍스트 포맷팅
@@ -249,7 +247,6 @@ Please provide a comprehensive and accurate answer based on the available contex
         query: str,
         mcp_context: Optional[Dict] = None,
         model: Optional[str] = None,
-        **kwargs
     ) -> AsyncIterator[str]:
         """
         사용자 쿼리에 대한 스트리밍 응답을 생성합니다.
@@ -265,7 +262,7 @@ Please provide a comprehensive and accurate answer based on the available contex
         """
         # 필요하거나 모델이 변경된 경우 LLM 초기화
         if self.llm is None or (model and model != self.model):
-            self.initialize_llm(model, **kwargs)
+            self.initialize_llm(model)
             self._invalidate_chain_cache()  # LLM 변경 시 캐시 무효화
 
         # MCP 컨텍스트 포맷팅

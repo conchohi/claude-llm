@@ -56,7 +56,6 @@ class OpenAILLMService(BaseLLMService):
 
         Args:
             model: 선택적 모델 재정의.
-            **kwargs: 추가 매개변수 (temperature, max_tokens, top_p, frequency_penalty).
 
         Returns:
             초기화된 ChatOpenAI 인스턴스.

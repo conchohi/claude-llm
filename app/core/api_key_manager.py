@@ -46,10 +46,6 @@ class APIKeyManager:
         """저장을 위해 API 키를 해시합니다."""
         return hashlib.sha256(api_key.encode()).hexdigest()
 
-    def generate_api_key(self) -> str:
-        """새로운 보안 API 키를 생성합니다."""
-        return secrets.token_urlsafe(32)
-
     async def create_api_key(
         self,
         user_id: str,

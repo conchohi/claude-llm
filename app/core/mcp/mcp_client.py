@@ -381,10 +381,10 @@ class MCPClientManager:
                     })
 
             latency_ms = (time.time() - start_time) * 1000
-
+            
             return {
                 "success": True,
-                "agent_summary": agent_result.get("output", ""),  # Agent의 요약
+                "agent_summary": agent_result.get("output", "") if tools_used else None,  # Agent의 요약
                 "tools_used": tools_used,
                 "mcp_context": mcp_context_for_llm, 
                 "latency_ms": latency_ms,

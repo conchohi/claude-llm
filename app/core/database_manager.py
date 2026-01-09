@@ -56,7 +56,7 @@ class DatabaseManager:
 
     def _get_database_url(self) -> str:
         """데이터베이스 타입에 따른 연결 URL을 생성합니다."""
-        if self.db_type == "mysql":
+        if self.db_type == "mysql" or self.db_type == "mariadb":
             # aiomysql 드라이버 사용 (MySQL과 MariaDB 모두 지원)
             return f"mysql+aiomysql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
         elif self.db_type == "postgresql":

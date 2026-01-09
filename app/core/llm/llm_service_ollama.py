@@ -47,7 +47,6 @@ class OllamaLLMService(BaseLLMService):
 
         Args:
             model: 선택적 모델 재정의.
-            **kwargs: 추가 매개변수 (temperature, max_tokens).
 
         Returns:
             초기화된 ChatOllama 인스턴스.
