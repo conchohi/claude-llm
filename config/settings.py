@@ -166,6 +166,28 @@ class AuthSettings(BaseSettings):
     )
 
 
+class DatabaseSettings(BaseSettings):
+    """데이터베이스 설정."""
+
+    type: str = Field(default="mysql", description="데이터베이스 타입: 'mysql' 또는 'postgresql'")
+    host: str = Field(default="localhost", description="데이터베이스 호스트")
+    port: int = Field(default=3306, gt=0, lt=65536, description="데이터베이스 포트")
+    user: str = Field(default="root", description="데이터베이스 사용자")
+    password: str = Field(default="", description="데이터베이스 비밀번호")
+    name: str = Field(default="claude_db", description="데이터베이스 이름")
+    pool_size: int = Field(default=5, gt=0, description="연결 풀 크기")
+    max_overflow: int = Field(default=10, ge=0, description="최대 오버플로우 연결 수")
+    pool_recycle: int = Field(default=3600, gt=0, description="연결 재활용 시간(초)")
+
+    model_config = SettingsConfigDict(
+        env_prefix="DB_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
+
 class Settings(BaseSettings):
     """
         메인 애플리케이션 설정 컨테이너.
@@ -183,9 +205,9 @@ class Settings(BaseSettings):
     mcp: MCPSettings = Field(default_factory=MCPSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
 
-    # 데이터베이스
-    database_url: str = Field(default="sqlite:///./data/app.db", description="데이터베이스 URL")
+    # 기타 설정
     prompt_path: str = Field(default="./templates", description="HTML 템플릿 경로")
 
     # model_config : Pydantic에서 정의한 메타데이터 변수명, 클래스 정의 시점에 이미 읽힘

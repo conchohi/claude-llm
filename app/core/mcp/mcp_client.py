@@ -298,13 +298,18 @@ class MCPClientManager:
             if self._llm_instance is None:
                 settings = get_settings()
                 if settings.llm.provider == "ollama":
+                    # Agent는 max_tokens 파라미터를 지원하지 않거나 자동 계산함
+                    # num_predict로 대체 (Ollama 전용 파라미터)
                     self._llm_instance = ChatOllama(
                         base_url=settings.ollama.base_url,
                         model=settings.llm.model,
-                        max_tokens=settings.llm.max_tokens,
+                        num_predict=settings.llm.max_tokens,
                         temperature=settings.llm.temperature,
                     )
                 elif settings.llm.provider == "openai":
+                    # OpenAI API에서 max_tokens는 완료(completion) 토큰만 제한
+                    # Agent 사용 시 프롬프트가 길어질 수 있으므로 적절한 값 설정
+                    # 참고: 일부 OpenAI 호환 API는 max_tokens 필드가 필수임
                     self._llm_instance = ChatOpenAI(
                         model=settings.llm.model,
                         temperature=settings.llm.temperature,
@@ -313,15 +318,16 @@ class MCPClientManager:
                         base_url=settings.openai.base_url,
                     )
 
-            # 에이전트 프롬프트 생성 (도구 실행에만 집중)
+            # 에이전트 프롬프트 생성 (도구 실행에만 집중, 간결하게)
             agent_prompt = ChatPromptTemplate.from_messages([
-                ("system", """당신은 사용자 쿼리를 처리하기 위해 필요한 도구를 선택하고 실행하는 어시스턴트입니다.
+                 ("system", """당신은 사용자 쿼리를 처리하기 위해 필요한 도구를 선택하고 실행하는 어시스턴트입니다.
 
-                    주어진 쿼리를 처리하기 위해 필요한 도구를 자유롭게 선택하고 사용하세요.
-                    여러 도구를 연쇄적으로 사용할 수 있으며, 한 도구의 결과를 바탕으로 다른 도구를 호출할 수 있습니다.
-
-                    도구 실행이 완료되면 수집한 정보를 요약하여 반환하세요.
-                    최종 답변은 별도의 LLM이 생성하므로, 여기서는 도구 실행 결과만 제공하면 됩니다."""),
+                            주어진 쿼리를 처리하기 위해 필요한 도구를 자유롭게 선택하고 사용하세요.
+                            여러 도구를 연쇄적으로 사용할 수 있으며, 한 도구의 결과를 바탕으로 다른 도구를 호출할 수 있습니다.
+                            필요한 도구를 선택하고 실행하세요. 도구 실행 결과만 간략히 요약하세요.
+                            도구 실행이 완료되면 수집한 정보를 요약하여 반환하세요.
+                            도구를 사용하지 않았을 경우 빈 응답을 반환하세요.
+                            불필요한 설명이나 장황한 내용을 피하고, 도구 실행에 집중하세요."""),
                 ("human", "{input}"),
                 ("placeholder", "{agent_scratchpad}"),
             ])
@@ -333,7 +339,7 @@ class MCPClientManager:
                 tools=all_tools,
                 verbose=True,
                 return_intermediate_steps=True,
-                max_iterations=10,  # 최대 반복 횟수 설정 (도구 체인 허용)
+                max_iterations=10,
             )
 
             # 에이전트 실행 (도구 실행만)
@@ -342,7 +348,7 @@ class MCPClientManager:
             # 사용된 도구 정보 추출
             tools_used = []
             mcp_context_for_llm = {}  # LLM Service에 전달할 MCP 컨텍스트
-
+    
             if "intermediate_steps" in agent_result and agent_result["intermediate_steps"]:
                 for step in agent_result["intermediate_steps"]:
                     tool_action, tool_result = step
@@ -371,7 +377,7 @@ class MCPClientManager:
                     mcp_context_for_llm[server_name].data["tools_executed"].append({
                         "tool_name": tool_name,
                         "input": tool_action.tool_input,
-                        "result": str(tool_result),  # 전체 결과 포함
+                        "result": str(tool_result)[:3000],  # 3000자로 제한
                     })
 
             latency_ms = (time.time() - start_time) * 1000

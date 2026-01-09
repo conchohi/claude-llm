@@ -17,6 +17,8 @@ from app.core.llm.llm_service_base import BaseLLMService
 from app.core.llm.llm_service_factory import create_llm_service
 from app.core.query_processor import QueryProcessor
 from app.core.session_manager import SessionManager
+from app.core.api_key_manager import APIKeyManager
+from app.core.database_manager import DatabaseManager
 from app.api import routes
 from app.api.middleware import AuthenticationMiddleware
 
@@ -25,6 +27,7 @@ mcp_client: MCPClientManager | None = None
 llm_service: BaseLLMService | None = None
 query_processor: QueryProcessor | None = None
 session_manager: SessionManager | None = None
+api_key_manager: APIKeyManager | None = None
 
 
 @asynccontextmanager
@@ -48,12 +51,45 @@ async def lifespan(app: FastAPI):
     # 애플리케이션 시작
     logger.info("Starting application...")
 
-    global mcp_client, llm_service, query_processor, session_manager
+    global mcp_client, llm_service, query_processor, session_manager, api_key_manager
 
     try:
         logger.info("Loaded settings from environment")
 
-        # SessionManager 초기화
+        # DatabaseManager 초기화
+        logger.info(f"Connecting to {settings.database.type.upper()} database at {settings.database.host}:{settings.database.port}")
+        db_manager = DatabaseManager(
+            db_type=settings.database.type,
+            host=settings.database.host,
+            port=settings.database.port,
+            user=settings.database.user,
+            password=settings.database.password,
+            database=settings.database.name,
+            pool_size=settings.database.pool_size,
+            max_overflow=settings.database.max_overflow,
+            pool_recycle=settings.database.pool_recycle,
+        )
+
+        # APIKeyManager 초기화 (DB만 사용)
+        logger.info("Initializing API key manager...")
+        api_key_manager = APIKeyManager(
+            db_manager=db_manager,
+            secret_key=settings.auth.secret_key
+        )
+
+        try:
+            await api_key_manager.connect()
+            logger.info("✓ Successfully connected to database for API key management")
+        except Exception as e:
+            logger.error(f"✗ Failed to connect to database: {e}")
+            if settings.auth.enabled:
+                raise RuntimeError(
+                "Database connection failed but authentication is enabled. "
+                "Either fix the connection or set AUTH_ENABLED=false"
+            )
+            api_key_manager = None
+
+        # SessionManager 초기화 (DB + Redis 하이브리드)
         redis_url = f"redis://"
         if settings.redis.password:
             redis_url += f":{quote_plus(settings.redis.password)}@"
@@ -62,22 +98,19 @@ async def lifespan(app: FastAPI):
         logger.info(f"Connecting to Redis at {settings.redis.host}:{settings.redis.port}")
 
         session_manager = SessionManager(
+            db_manager=db_manager,
             redis_url=redis_url,
             max_connections=settings.redis.max_connections,
             session_ttl=settings.redis.session_ttl,
-            secert_key=settings.auth.secret_key
         )
 
         try:
             await session_manager.connect()
-            logger.info("✓ Successfully connected to Redis")
+            logger.info("✓ Successfully connected to database and Redis for session management")
         except Exception as e:
-            logger.error(f"✗ Failed to connect to Redis: {e}")
-            if settings.auth.enabled:
-                raise RuntimeError(
-                "Redis connection failed but authentication is enabled. "
-                "Either fix Redis connection or set AUTH_ENABLED=false"
-            )
+            logger.error(f"✗ Failed to connect to database or Redis: {e}")
+            # 세션 관리는 선택사항이므로 경고만 표시
+            logger.warning("Session management will not be available")
             session_manager = None
 
         # LLM 서비스 초기화 (팩토리 패턴 사용)
@@ -147,7 +180,7 @@ async def lifespan(app: FastAPI):
         await mcp_client.shutdown()
 
     if session_manager:
-        logger.info("Disconnecting from Redis...")
+        logger.info("Disconnecting from database and Redis...")
         await session_manager.disconnect()
 
     logger.info("✓ Application shutdown complete")
@@ -188,7 +221,7 @@ def create_app() -> FastAPI:
     if settings.auth.enabled:
         app.add_middleware(
             AuthenticationMiddleware,
-            session_manager_getter=lambda: session_manager,
+            api_key_manager_getter=lambda: api_key_manager,
             auth_enabled=settings.auth.enabled,
             api_key_header=settings.auth.api_key_header,
         )

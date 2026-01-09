@@ -326,8 +326,8 @@ async def create_session(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")          
 
-@router.get("/api/v1/sessions/{session_id}", response_model=SessionResponse, tags=["Sessions"])
-async def get_session(
+@router.get("/api/v1/messages/{session_id}", response_model=SessionResponse, tags=["Sessions"])
+async def get_messages(
     session_id: str,
     user_id: str = Depends(get_current_user),
     session_manager: SessionManager = Depends(get_session_manager),
@@ -339,7 +339,7 @@ async def get_session(
     - `session_id`: 세션 ID
     """
     try:
-        session = await session_manager.get_session(session_id)
+        session = await session_manager.get_session_info(session_id)
 
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -357,6 +357,7 @@ async def get_session(
                     content=msg.content,
                     timestamp=msg.timestamp,
                     mcp_context=msg.mcp_context,
+                    process_time_ms=msg.process_time_ms,
                 )
                 for msg in session.messages
             ],
@@ -383,7 +384,7 @@ async def delete_session(
     - `session_id`: 세션 ID
     """
     try:
-        session = await session_manager.get_session(session_id)
+        session = await session_manager.get_session_info(session_id)
 
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")

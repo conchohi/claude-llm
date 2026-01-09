@@ -4,10 +4,11 @@ API 키 검증을 위한 인증 미들웨어.
 
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
+from openai import api_key
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Optional, Callable
 
-from app.core.session_manager import SessionManager
+from app.core.api_key_manager import APIKeyManager
 
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
@@ -29,7 +30,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app,
-        session_manager_getter: Callable[[], Optional[SessionManager]],
+        api_key_manager_getter: Callable[[], Optional[APIKeyManager]],
         auth_enabled: bool = True,
         api_key_header: str = "X-API-Key"
     ):
@@ -38,12 +39,12 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         Args:
             app: FastAPI 애플리케이션.
-            session_manager_getter: SessionManager 인스턴스를 반환하는 Callable (지연 참조).
+            api_key_manager_getter: APIKeyManager 인스턴스를 반환하는 Callable (지연 참조).
             auth_enabled: 인증 활성화 여부.
             api_key_header: API 키를 위한 헤더 이름.
         """
         super().__init__(app)
-        self.session_manager_getter = session_manager_getter
+        self.api_key_manager_getter = api_key_manager_getter
         self.auth_enabled = auth_enabled
         self.api_key_header = api_key_header
 
@@ -66,10 +67,10 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         if self._is_exempt_path(request.url.path):
             return await call_next(request)
 
-        # SessionManager 가져오기 (지연 참조)
-        session_manager = self.session_manager_getter()
+        # APIKeyManager 가져오기 (지연 참조)
+        api_key_manager = self.api_key_manager_getter()
 
-        if not session_manager:
+        if not api_key_manager:
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 content={
@@ -81,7 +82,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         # API 키 검증
         api_key = request.headers.get(self.api_key_header)
-
+       
         if not api_key:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -93,8 +94,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             )
 
         # API 키 유효성 검증
-        user_id = await session_manager.validate_api_key(api_key)
-
+        user_id = await api_key_manager.validate_api_key(api_key)
+        
         if not user_id:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,

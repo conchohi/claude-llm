@@ -3,12 +3,13 @@
 """
 
 import time
-from typing import Dict, Optional, AsyncIterator
+from datetime import datetime
+from typing import Any, Dict, Optional, AsyncIterator
 from app.core.mcp.mcp_client import MCPClientManager
 from app.core.llm.llm_service_base import BaseLLMService
 from app.core.session_manager import SessionManager
 from app.models.mcp_server import MCPResponse
-from app.models.auth import ConversationSession
+from app.models.auth import ConversationSession, ConversationMessage
 
 MAX_CONVERSATION_HISTORY_MESSAGES = 10
 MCP_CONTEXT_PREVIEW_LENGTH = 200
@@ -42,23 +43,42 @@ class QueryProcessor:
         session: Optional[ConversationSession],
         query: str,
         response_content: str,
-        mcp_context: Dict[str, MCPResponse],
     ) -> None:
         """세션에 쿼리와 응답을 저장합니다."""
         if session and self.session_manager:
             session.add_message(role="user", content=query)
-
-            mcp_context_summary = {
-                name: {"success": resp.success, "data_preview": str(resp.data)[:MCP_CONTEXT_PREVIEW_LENGTH]}
-                for name, resp in mcp_context.items()
-            }
+            
             session.add_message(
                 role="assistant",
                 content=response_content,
-                mcp_context=mcp_context_summary,
             )
 
             await self.session_manager.save_session(session)
+    
+    async def _save_conversation_message(
+        self,
+        session_id: str,
+        user_id: str,
+        content: str,
+        role: str,
+        mcp_context: Dict[str, Any] = None,
+        process_time_ms: int = None,
+    ) -> None:
+        message = ConversationMessage(
+            role=role,
+            content=content,
+            timestamp=datetime.now(),
+            mcp_context=mcp_context,
+        )
+        
+        """세션에 메시지를 저장합니다."""
+        if self.session_manager:
+            await self.session_manager.save_conversation_message(
+                session_id=session_id,
+                user_id=user_id,
+                message=message,
+                process_time_ms=process_time_ms,
+            )
 
     async def process_query(
         self,
@@ -88,7 +108,7 @@ class QueryProcessor:
         if self.session_manager and user_id:
             # 세션 로드
             if session_id:
-                session = await self.session_manager.get_session(session_id)
+                session = await self.session_manager.get_session_cache(session_id)
 
                 # 유효하지 않은 세션이면 새로 생성
                 if not session or session.user_id != user_id:
@@ -104,6 +124,14 @@ class QueryProcessor:
                     role_label = "User" if msg.role == "user" else "Assistant"
                     history_parts.append(f"{role_label}: {msg.content}")
                 conversation_history = "\n".join(history_parts)
+        
+        # 사용자 메시지 저장
+        await self._save_conversation_message(
+            session_id if session_id else session.session_id,
+            user_id,
+            query,
+            "user"
+        )
 
         # 1단계: Agent를 사용하여 필요한 도구 실행
         enhanced_query = query
@@ -134,9 +162,7 @@ class QueryProcessor:
         )
 
         # 3단계: 세션에 저장
-        await self._save_to_session(
-            session, query, llm_response.get("response", ""), mcp_context
-        )
+        await self._save_to_session(session, query, llm_response.get("response", ""))
 
         # 4단계: 응답 구성
         processing_time = time.time() - start_time
@@ -146,11 +172,6 @@ class QueryProcessor:
             "mcp_context": self._format_mcp_context_for_response(mcp_context),
             "metadata": {
                 "processing_time": round(processing_time, 3),
-                "mcp_servers_queried": list(set([t.get("server_name", "unknown") for t in agent_result.get("tools_used", [])])),
-                "mcp_servers_successful": list(set([t.get("server_name", "unknown") for t in agent_result.get("tools_used", []) if t.get("success", False)])),
-                "tools_used": agent_result.get("tools_used", []),
-                "agent_summary": agent_result.get("agent_summary", ""),
-                "success": llm_response.get("success", True),
                 "conversation_history_used": bool(conversation_history),
             },
             "success": llm_response.get("success", True),
@@ -160,109 +181,17 @@ class QueryProcessor:
         if session:
             result["session_id"] = session.session_id
 
+        # 5단계: DB 저장
+        await self._save_conversation_message(
+            session_id if session_id else session.session_id,
+            user_id,
+            llm_response.get("response", ""),
+            "assistant",
+            self._format_mcp_context_for_response(mcp_context),
+            process_time_ms= processing_time * 1000
+        )
+        
         return result
-
-    # ===== 기존 코드 (서버 선택 방식) =====
-    # async def process_query(
-    #     self,
-    #     query: str,
-    #     user_id: Optional[str] = None,
-    #     session_id: Optional[str] = None,
-    #     use_conversation_history: bool = True,
-    # ) -> Dict:
-    #     """
-    #     MCP 컨텍스트와 함께 사용자 쿼리를 처리하고 응답을 생성합니다.
-    #
-    #     Args:
-    #         query: 사용자 쿼리 문자열.
-    #         user_id: 세션 관리를 위한 사용자 ID.
-    #         session_id: 선택적 세션 ID. None이고 user_id가 제공되면 새 세션을 생성합니다.
-    #         use_conversation_history: 컨텍스트에 대화 기록을 포함할지 여부.
-    #
-    #     Returns:
-    #         응답, MCP 컨텍스트, session_id 및 메타데이터를 포함하는 딕셔너리.
-    #     """
-    #     start_time = time.time()
-    #
-    #     # 0단계: 쿼리 컨텍스트 준비
-    #     session = None
-    #     conversation_history = ""
-    #
-    #     if self.session_manager and user_id:
-    #         # 세션 로드
-    #         if session_id:
-    #             session = await self.session_manager.get_session(session_id)
-    #
-    #             # 유효하지 않은 세션이면 새로 생성
-    #             if not session or session.user_id != user_id:
-    #                 session = await self.session_manager.create_session(user_id)
-    #         else:
-    #             # 새 세션 생성
-    #             session = await self.session_manager.create_session(user_id)
-    #
-    #         # 활성화된 경우 대화 기록 구축
-    #         if use_conversation_history and session and session.messages:
-    #             history_parts = []
-    #             for msg in session.messages[-MAX_CONVERSATION_HISTORY_MESSAGES:]:
-    #                 role_label = "User" if msg.role == "user" else "Assistant"
-    #                 history_parts.append(f"{role_label}: {msg.content}")
-    #             conversation_history = "\n".join(history_parts)
-    #
-    #     # 1단계: MCP 컨텍스트 수집
-    #     mcp_context = {}
-    #
-    #     # 모든 활성화된 서버 중에서 선택
-    #     enabled_servers = [
-    #         name for name, status in self.mcp_client.get_all_statuses().items()
-    #         if status.enabled and status.running
-    #     ]
-    #
-    #     if enabled_servers:
-    #         selected_server = await self.mcp_client.select_appropriate_server(enabled_servers, query, conversation_history)
-    #
-    #     # 선택된 서버에만 쿼리
-    #     if selected_server:
-    #         mcp_response = await self.mcp_client.query_server(selected_server, query, conversation_history)
-    #         mcp_context[selected_server] = mcp_response
-    #
-    #     # 2단계: LLM 응답 생성
-    #     enhanced_query = query
-    #     if conversation_history:
-    #         enhanced_query = f"Conversation History:\n{conversation_history}\n\nCurrent Query: {query}"
-    #
-    #     llm_response = await self.llm_service.generate_response(
-    #         query=enhanced_query,
-    #         mcp_context=mcp_context,
-    #     )
-    #
-    #     # 3단계: 세션에 저장
-    #     await self._save_to_session(
-    #         session, query, llm_response.get("response", ""), mcp_context
-    #     )
-    #
-    #     # 4단계: 응답 구성
-    #     processing_time = time.time() - start_time
-    #     result = {
-    #         "response": llm_response.get("response", ""),
-    #         "model": llm_response.get("model", self.llm_service.model),
-    #         "mcp_context": self._format_mcp_context_for_response(mcp_context),
-    #         "metadata": {
-    #             "processing_time": round(processing_time, 3),
-    #             "mcp_servers_queried": list(mcp_context.keys()) if mcp_context else [],
-    #             "mcp_servers_successful": [
-    #                 name for name, resp in mcp_context.items() if resp.success
-    #             ] if mcp_context else [],
-    #             "success": llm_response.get("success", True),
-    #             "conversation_history_used": bool(conversation_history),
-    #         },
-    #         "success": llm_response.get("success", True),
-    #         "error": llm_response.get("error") if not llm_response.get("success", True) else None,
-    #     }
-    #
-    #     if session:
-    #         result["session_id"] = session.session_id
-    #
-    #     return result
 
     async def process_streaming_query(
         self,
@@ -283,6 +212,8 @@ class QueryProcessor:
         Yields:
             생성되는 응답 청크.
         """
+        start_time = time.time()
+        
         # 0단계: 쿼리 컨텍스트 준비
         session = None
         conversation_history = ""
@@ -290,7 +221,7 @@ class QueryProcessor:
         if self.session_manager and user_id:
             # 세션 로드
             if session_id:
-                session = await self.session_manager.get_session(session_id)
+                session = await self.session_manager.get_session_cache(session_id)
 
                 # 유효하지 않은 세션이면 새로 생성
                 if not session or session.user_id != user_id:
@@ -306,6 +237,14 @@ class QueryProcessor:
                     role_label = "User" if msg.role == "user" else "Assistant"
                     history_parts.append(f"{role_label}: {msg.content}")
                 conversation_history = "\n".join(history_parts)
+        
+        # 사용자 메시지 저장
+        await self._save_conversation_message(
+            session_id if session_id else session.session_id,
+            user_id,
+            query,
+            "user"
+        )
 
         # 1단계: Agent를 사용하여 필요한 도구 실행
         enhanced_query = query
@@ -339,7 +278,19 @@ class QueryProcessor:
             yield chunk
 
         # 3단계: 세션에 저장
-        await self._save_to_session(session, query, full_response, mcp_context)
+        await self._save_to_session(session, query, full_response)
+        
+        processing_time = time.time() - start_time
+        
+        # 4단계: DB 저장
+        await self._save_conversation_message(
+            session_id if session_id else session.session_id,
+            user_id,
+            full_response,
+            "assistant",
+            self._format_mcp_context_for_response(mcp_context),
+            process_time_ms= processing_time * 1000
+        )
 
     def _format_mcp_context_for_response(self, mcp_context: Dict[str, MCPResponse]) -> Dict:
         """
@@ -358,7 +309,6 @@ class QueryProcessor:
                 "success": response.success,
                 "data": response.data if response.success else None,
                 "error": response.error if not response.success else None,
-                "latency_ms": round(response.latency_ms, 2),
             }
 
         return formatted

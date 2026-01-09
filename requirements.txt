@@ -27,9 +27,11 @@ pyyaml==6.0.2
 # Logging & Monitoring
 rich==13.9.4
 
-# Database (if needed for caching/storage)
-sqlalchemy==2.0.37
-aiosqlite==0.20.0
+# Database
+sqlalchemy[asyncio]==2.0.37
+aiomysql==0.2.0
+asyncpg==0.30.0
+alembic==1.15.1
 
 # Utilities
 typing-extensions==4.12.2

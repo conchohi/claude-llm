@@ -21,9 +21,9 @@ class ConversationMessage:
 
     mcp_context: Optional[Dict[str, Any]] = None
     """이 메시지에 사용된 MCP 컨텍스트 (어시스턴트 메시지용)."""
-
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    """추가 메시지 메타데이터."""
+    
+    process_time_ms: Optional[int] = None
+    """메시지 처리에 소요된 시간 (밀리초)."""
 
 
 @dataclass
@@ -45,16 +45,12 @@ class ConversationSession:
     updated_at: datetime = field(default_factory=datetime.now)
     """세션 마지막 업데이트 타임스탬프."""
 
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    """추가 세션 메타데이터."""
-
-    def add_message(self, role: str, content: str, mcp_context: Optional[Dict] = None) -> ConversationMessage:
+    def add_message(self, role: str, content: str) -> ConversationMessage:
         """대화에 새 메시지를 추가합니다."""
         message = ConversationMessage(
             role=role,
             content=content,
-            timestamp=datetime.now(),
-            mcp_context=mcp_context,
+            timestamp=datetime.now()
         )
         self.messages.append(message)
         self.updated_at = datetime.now()

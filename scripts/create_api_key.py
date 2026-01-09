@@ -11,7 +11,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.core.session_manager import SessionManager
+from app.core.api_key_manager import APIKeyManager
+from app.core.database_manager import DatabaseManager
 from config.settings import get_settings
 
 
@@ -26,23 +27,30 @@ async def create_api_key(user_id: str, key_name: str, rate_limit: int | None = N
     """
     settings = get_settings()
 
-    # Build Redis URL
-    redis_url = f"redis://"
-    if settings.redis.password:
-        redis_url += f":{settings.redis.password}@"
-    redis_url += f"{settings.redis.host}:{settings.redis.port}/{settings.redis.db}"
+    # Initialize DatabaseManager
+    print(f"Connecting to {settings.database.type.upper()} database at {settings.database.host}:{settings.database.port}...")
 
-    print(f"Connecting to Redis at {settings.redis.host}:{settings.redis.port}...")
+    db_manager = DatabaseManager(
+        db_type=settings.database.type,
+        host=settings.database.host,
+        port=settings.database.port,
+        user=settings.database.user,
+        password=settings.database.password,
+        database=settings.database.name,
+        pool_size=settings.database.pool_size,
+        max_overflow=settings.database.max_overflow,
+        pool_recycle=settings.database.pool_recycle,
+    )
 
-    session_manager = SessionManager(
-        redis_url=redis_url,
-        session_ttl=settings.redis.session_ttl,
-        secert_key=settings.auth.secret_key
+    # Initialize APIKeyManager
+    api_key_manager = APIKeyManager(
+        db_manager=db_manager,
+        secret_key=settings.auth.secret_key
     )
 
     try:
-        await session_manager.connect()
-        print("✓ Connected to Redis\n")
+        await api_key_manager.connect()
+        print("✓ Connected to database\n")
 
         # Create API key
         print(f"Creating API key for user: {user_id}")
@@ -50,7 +58,7 @@ async def create_api_key(user_id: str, key_name: str, rate_limit: int | None = N
         if rate_limit:
             print(f"Rate limit: {rate_limit} requests/hour")
 
-        plain_key, api_key = await session_manager.create_api_key(
+        plain_key, api_key = await api_key_manager.create_api_key(
             user_id=user_id,
             name=key_name,
             rate_limit=rate_limit,
@@ -72,8 +80,8 @@ async def create_api_key(user_id: str, key_name: str, rate_limit: int | None = N
         print(f"\n✗ Error: {e}")
         sys.exit(1)
     finally:
-        await session_manager.disconnect()
-        print("\n✓ Disconnected from Redis")
+        await api_key_manager.disconnect()
+        print("\n✓ Disconnected from database")
 
 
 def main():
