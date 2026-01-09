@@ -137,6 +137,7 @@ ruff format . && ruff check . && mypy app/
 
 - **API 키 인증**: SHA-256 해싱을 사용한 HMAC 서명 API 키
 
+  - 관리자: `app/core/api_key_manager.py:APIKeyManager`
   - 미들웨어: `app/api/middleware.py:AuthenticationMiddleware`
   - API 키 형식: `{random_token}.{hmac_signature}`
     - `random_token`: `secrets.token_urlsafe(32)`를 통한 32바이트 랜덤 토큰
@@ -145,35 +146,38 @@ ruff format . && ruff check . && mypy app/
     1. 키를 토큰 + 서명으로 분할
     2. `AUTH_SECRET_KEY`를 사용하여 HMAC 서명 재계산
     3. `hmac.compare_digest()`를 통한 타이밍 안전 비교 (타이밍 공격 방지)
-    4. Redis에서 키 해시 조회
-  - 키는 SHA-256 해시와 함께 Redis에 저장: `apikey:{key_hash}`
-  - 필수 필드: `user_id`, `name`, `created_at`, `is_active`, `rate_limit`, `last_used`
+    4. 관계형 DB에서 키 해시 조회
+  - 키는 SHA-256 해시와 함께 관계형 DB에 저장 (MySQL/PostgreSQL)
+  - 테이블: `api_keys` (컬럼: `key_hash`, `user_id`, `name`, `created_at`, `is_active`, `rate_limit`, `last_used`)
   - 제외 경로: `/`, `/health`, `/docs`, `/redoc`, `/openapi.json`
   - `.env`에서 `AUTH_ENABLED=false`를 통해 인증 비활성화 가능
   - **중요**: 프로덕션에서는 `AUTH_SECRET_KEY`를 반드시 설정해야 함 (HMAC 서명에 사용)
 
-- **세션 관리**: Redis 기반 대화 기록 및 캐싱
+- **세션 관리**: Redis + 관계형 DB 이중 저장 방식
 
   - 관리자: `app/core/session_manager.py:SessionManager`
   - 생성자 매개변수:
+    - `db_manager`: DatabaseManager 인스턴스
     - `redis_url`: Redis 연결 URL
-    - `max_connections`: 연결 풀 크기 (기본값: 10)
-    - `session_ttl`: 세션 만료 시간(초) (기본값: 3600)
-    - `secret_key`: API 키 서명을 위한 HMAC 비밀키
-  - `user_id`가 있는 경우 첫 쿼리 시 세션 자동 생성
+    - `max_connections`: Redis 연결 풀 크기 (기본값: 10)
+    - `session_ttl`: Redis 세션 TTL(초) (기본값: 3600)
+  - **Redis**: 활성 세션 캐시 (빠른 조회, 최근 10개 메시지만 저장)
+    - 세션은 JSON으로 저장: `session:{session_id}`
+    - `session_ttl` 초 후 자동 만료 (기본값 1시간)
+  - **관계형 DB**: 영구 대화 기록 (전체 메시지 저장)
+    - 테이블: `conversation_sessions`, `conversation_messages`
+    - 메시지에 MCP 컨텍스트 및 처리 시간 포함
+  - `user_id`가 있는 경우 첫 쿼리 시 세션 자동 생성 (DB + Redis 모두에 저장)
   - 대화 기록(최근 10개 메시지)이 LLM 컨텍스트에 포함
-  - 세션은 JSON으로 저장: `session:{session_id}`
-  - 사용자 세션 인덱스: `user_sessions:{user_id}` (Redis 세트)
-  - 세션은 `REDIS_SESSION_TTL` 초 후 만료 (기본값 3600)
 
 - **인증을 통한 요청 흐름**:
-  1. 요청이 `AuthenticationMiddleware`에 도달 → API 키 검증 (HMAC 서명 + Redis 조회)
+  1. 요청이 `AuthenticationMiddleware`에 도달 → API 키 검증 (HMAC 서명 + DB 조회)
   2. `user_id`가 `request.state.user_id`에 저장
   3. 라우트 핸들러가 `Depends(get_current_user)`를 통해 `user_id` 추출
-  4. `QueryProcessor`가 Redis에서 세션 로드
+  4. `QueryProcessor`가 Redis에서 활성 세션 로드 (`get_session_cache`)
   5. 대화 기록(최근 10개 메시지)이 LLM 프롬프트에 주입
-  6. MCP 컨텍스트 요약(200자로 잘림)과 함께 응답이 세션에 저장
-  7. 각 접근 시 세션 TTL 갱신
+  6. 응답 생성 후 메시지가 DB에 영구 저장 (`save_conversation_message`)
+  7. Redis 캐시도 업데이트 (`save_session`)
 
 ### 주요 파일
 
@@ -230,43 +234,73 @@ ruff format . && ruff check . && mypy app/
 - `get_settings()`: 싱글톤 Settings 인스턴스 반환
 - `reset_settings()`: 싱글톤 지우기 (테스트용)
 
-**app/core/session_manager.py**
+**app/core/api_key_manager.py**
 
-- `SessionManager`: Redis 기반 세션 및 인증 관리
-- 생성자: `__init__(redis_url, max_connections, session_ttl, secret_key)`
+- `APIKeyManager`: 관계형 DB 기반 API 키 관리
+- 생성자: `__init__(db_manager, secret_key)`
 - 연결 관리:
-  - `connect()`: `aioredis.from_url()`로 Redis 연결 풀 설정
-  - `disconnect()`: `aioredis.aclose()`를 통해 Redis 연결 종료
-  - `_get_redis()`: Redis 클라이언트 반환 또는 연결되지 않은 경우 `RuntimeError` 발생
+  - `connect()`: 데이터베이스에 연결하고 테이블 생성
+  - `disconnect()`: 데이터베이스 연결 종료
 - API 키 메서드:
   - `generate_api_key()`: `secrets.token_urlsafe(32)`를 통해 보안 랜덤 토큰 생성
   - `create_api_key(user_id, name, rate_limit)`: HMAC 서명된 API 키 생성
     - `random_token` + `secret_key`를 사용한 HMAC 서명 생성
-    - SHA-256 해시를 Redis에 저장: `apikey:{key_hash}`
+    - SHA-256 해시를 DB에 저장 (테이블: `api_keys`)
     - 튜플 반환: `(plain_key, APIKey 객체)`
   - `validate_api_key(api_key)`: API 키 검증
     - 키를 토큰 + 서명으로 분할
     - HMAC을 재계산하고 `hmac.compare_digest()`를 통해 비교
     - 유효한 경우 `user_id` 반환, 그렇지 않으면 `None`
     - 성공적인 검증 시 `last_used` 타임스탬프 업데이트
-  - `_hash_api_key(api_key)`: Redis 저장을 위한 SHA-256 해시
+  - `_hash_api_key(api_key)`: DB 저장을 위한 SHA-256 해시
+
+**app/core/database_manager.py**
+
+- `DatabaseManager`: 비동기 관계형 DB 연결 관리자
+- 지원 DB: MySQL, MariaDB, PostgreSQL
+- 생성자: `__init__(db_type, host, port, user, password, database, pool_size, max_overflow, pool_recycle)`
+- 연결 관리:
+  - `connect()`: SQLAlchemy 비동기 엔진 생성
+  - `disconnect()`: 데이터베이스 연결 종료
+  - `create_tables()`: 테이블 생성 (SQLAlchemy 메타데이터 기반)
+  - `get_session()`: 비동기 제너레이터로 DB 세션 반환
+
+**app/core/session_manager.py**
+
+- `SessionManager`: Redis + 관계형 DB 이중 저장 세션 관리
+- 생성자: `__init__(db_manager, redis_url, max_connections, session_ttl)`
+- 연결 관리:
+  - `connect()`: DB와 Redis 모두 연결
+  - `disconnect()`: DB와 Redis 연결 종료
+  - `_get_redis()`: Redis 클라이언트 반환 또는 연결되지 않은 경우 `RuntimeError` 발생
 - 세션 메서드:
-  - `create_session(user_id)`: 랜덤 session_id로 새 세션 생성
-  - `get_session(session_id)`: Redis에서 세션 검색
-  - `save_session(session)`: TTL과 함께 세션 JSON 저장, 사용자의 세션 세트에 추가
-  - `get_user_sessions(user_id, limit)`: `updated_at`으로 정렬된 사용자의 세션 반환
-  - `delete_session(session_id)`: 세션 삭제 및 사용자의 세션 세트에서 제거
+  - `create_session(user_id)`: 랜덤 session_id로 새 세션 생성 (DB + Redis)
+  - `get_session_cache(session_id)`: Redis에서 활성 세션 캐시 검색
+  - `get_session_info(session_id)`: DB에서 전체 세션 정보 검색 (메시지 포함)
+  - `save_session(session)`: Redis에 세션 캐시 저장 (TTL 적용)
+  - `save_conversation_message(session_id, user_id, message, process_time_ms)`: DB에 메시지 영구 저장
+  - `get_user_sessions(user_id, limit)`: DB에서 사용자의 세션 목록 반환 (`updated_at` 정렬)
+  - `delete_session(session_id)`: DB에서 세션 삭제 (메시지도 cascade 삭제)
+
+**app/models/db_models.py**
+
+- SQLAlchemy 데이터베이스 모델 정의
+- `APIKeyModel`: API 키 테이블 모델 (`api_keys`)
+- `ConversationSessionModel`: 대화 세션 테이블 모델 (`conversation_sessions`)
+- `ConversationMessageModel`: 대화 메시지 테이블 모델 (`conversation_messages`)
+  - 메시지에 MCP 컨텍스트, 처리 시간, 에러 정보 포함
 
 **app/api/middleware.py**
 
 - `AuthenticationMiddleware`: 모든 요청에 대해 API 키 검증
-  - 생성자: `__init__(app, session_manager, auth_enabled, api_key_header)`
+  - 생성자: `__init__(app, api_key_manager_getter, auth_enabled, api_key_header)`
+    - `api_key_manager_getter`: APIKeyManager 인스턴스를 반환하는 Callable (지연 참조)
   - `EXEMPT_PATHS`: 인증이 필요하지 않은 경로 목록 (/, /health, /docs, /redoc, /openapi.json)
   - `dispatch(request, call_next)`: 주요 미들웨어 로직
     - `auth_enabled=False`인 경우 인증 건너뛰기
     - 제외 경로에 대한 인증 건너뛰기
     - 헤더에서 API 키 추출 (기본값: `X-API-Key`)
-    - `session_manager.validate_api_key()`를 통해 키 검증
+    - `api_key_manager.validate_api_key()`를 통해 키 검증
     - 인증된 요청에 대해 `request.state.user_id` 설정
     - 키가 누락/유효하지 않은 경우 HTTP 401 JSON 응답 반환
   - `_is_exempt_path(path)`: 경로가 제외되는지 확인 (정확한 일치 또는 접두사 일치)
@@ -386,11 +420,19 @@ template = """여기에 커스텀 프롬프트 작성.
 모든 설정은 환경 변수 지원과 함께 Pydantic을 사용합니다. 주요 변수:
 
 ```bash
-# Ollama
+# LLM 제공자
+LLM_PROVIDER=ollama                # 'ollama' 또는 'openai'
+LLM_MODEL=llama3.2
+LLM_TEMPERATURE=0.7
+LLM_MAX_TOKENS=2048
+
+# Ollama (LLM_PROVIDER=ollama일 때)
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2
-OLLAMA_TEMPERATURE=0.7
-OLLAMA_MAX_TOKENS=2048
+OLLAMA_KEEP_ALIVE=5m
+
+# OpenAI (LLM_PROVIDER=openai일 때)
+OPENAI_API_KEY=your-api-key
+OPENAI_BASE_URL=https://api.openai.com/v1
 
 # FastAPI
 API_HOST=0.0.0.0
@@ -402,13 +444,24 @@ MCP_CONFIG_PATH=./mcp_servers.json
 MCP_TIMEOUT=30
 MCP_MAX_RETRIES=3
 
-# Redis (세션 관리 및 캐싱)
+# Redis (활성 세션 캐시)
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_DB=0
 REDIS_PASSWORD=                    # 선택사항
 REDIS_MAX_CONNECTIONS=10           # 연결 풀 크기
 REDIS_SESSION_TTL=3600             # 세션 만료 시간(초) (1시간)
+
+# 관계형 데이터베이스 (영구 저장소)
+DB_TYPE=mysql                      # 'mysql' 또는 'postgresql'
+DB_HOST=localhost
+DB_PORT=3306                       # MySQL: 3306, PostgreSQL: 5432
+DB_USER=root
+DB_PASSWORD=your-password
+DB_NAME=claude_db
+DB_POOL_SIZE=5                     # 연결 풀 크기
+DB_MAX_OVERFLOW=10                 # 최대 오버플로우 연결 수
+DB_POOL_RECYCLE=3600               # 연결 재활용 시간(초)
 
 # 인증
 AUTH_ENABLED=true                  # API 키 인증 활성화/비활성화
@@ -423,6 +476,51 @@ CUSTOM_SERVER_TOKEN=your_token_here
 전체 목록은 `.env.example`을 참조하세요.
 
 ## 인증 및 세션 설정
+
+### 데이터베이스 설정
+
+**MySQL/MariaDB**:
+
+```bash
+# 데이터베이스 생성
+mysql -u root -p
+CREATE DATABASE claude_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'claude_user'@'localhost' IDENTIFIED BY 'your-password';
+GRANT ALL PRIVILEGES ON claude_db.* TO 'claude_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+**PostgreSQL**:
+
+```bash
+# 데이터베이스 생성
+psql -U postgres
+CREATE DATABASE claude_db;
+CREATE USER claude_user WITH PASSWORD 'your-password';
+GRANT ALL PRIVILEGES ON DATABASE claude_db TO claude_user;
+\q
+```
+
+**환경 변수 설정**:
+
+```bash
+# MySQL
+DB_TYPE=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=claude_user
+DB_PASSWORD=your-password
+DB_NAME=claude_db
+
+# PostgreSQL
+DB_TYPE=postgresql
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=claude_user
+DB_PASSWORD=your-password
+DB_NAME=claude_db
+```
 
 ### Redis 설정
 
@@ -468,6 +566,8 @@ python scripts/create_api_key.py admin "Admin Key" 10000
 # Rate Limit: 10000 requests/hour
 # ⚠️  중요: 이 API 키를 지금 저장하세요 - 다시 표시되지 않습니다!
 ```
+
+**참고**: API 키는 관계형 데이터베이스에 저장되므로 데이터베이스가 먼저 설정되어 있어야 합니다.
 
 ### API 키 사용
 
@@ -566,6 +666,20 @@ AUTH_ENABLED=false
 
 ### 인증 및 세션 문제
 
+**데이터베이스 연결 실패**:
+
+```bash
+# MySQL 연결 확인
+mysql -h localhost -u claude_user -p -D claude_db
+
+# PostgreSQL 연결 확인
+psql -h localhost -U claude_user -d claude_db
+
+# 테이블 확인
+SHOW TABLES;  # MySQL
+\dt           # PostgreSQL
+```
+
 **Redis 연결 실패**:
 
 ```bash
@@ -585,21 +699,33 @@ systemctl status redis
 - 요청에 `X-API-Key` 헤더가 있는지 확인
 - API 키 형식 확인: `{token}.{signature}` 형식이어야 함
 - `AUTH_SECRET_KEY`가 생성 시 사용된 키와 일치하는지 확인
-- Redis에 저장된 키 확인: `redis-cli HGETALL apikey:{key_hash}`
-  - 키 해시: 전체 API 키의 SHA-256 (토큰 + 서명)
-- `is_active` 필드가 `True`인지 확인
+- 데이터베이스에 저장된 키 확인:
+  ```sql
+  -- MySQL/MariaDB
+  SELECT * FROM api_keys WHERE key_hash = SHA2('your-full-api-key', 256);
+
+  -- PostgreSQL
+  SELECT * FROM api_keys WHERE key_hash = encode(digest('your-full-api-key', 'sha256'), 'hex');
+  ```
+- `is_active` 필드가 `TRUE`인지 확인
 - 검증 오류에 대한 인증 미들웨어 로그 확인
 - 일반적인 문제:
   - **HMAC 서명 불일치**: 키 생성 후 `AUTH_SECRET_KEY` 변경됨
-  - **Redis에서 키를 찾을 수 없음**: 키가 만료되었거나 삭제됨
+  - **DB에서 키를 찾을 수 없음**: 키가 삭제되었거나 DB 연결 실패
   - **유효하지 않은 형식**: 키에 `.` 구분자가 없음
 
 **세션이 유지되지 않음**:
 
 - Redis 연결이 활성 상태인지 확인 (시작 로그 확인)
+- 데이터베이스 연결이 활성 상태인지 확인
 - 세션 TTL이 만료되지 않았는지 확인 (`REDIS_SESSION_TTL`)
 - session_id가 후속 요청에서 전달되는지 확인
-- Redis에서 세션 확인: `redis-cli GET session:{session_id}`
+- Redis에서 활성 세션 확인: `redis-cli GET session:{session_id}`
+- DB에서 영구 세션 확인:
+  ```sql
+  SELECT * FROM conversation_sessions WHERE session_id = 'your-session-id';
+  SELECT * FROM conversation_messages WHERE session_id = 'your-session-id';
+  ```
 
 ## 테스트 패턴
 
@@ -628,20 +754,29 @@ async def test_async_function():
 
 ## 중요 참고사항
 
-- **데이터베이스 마이그레이션 없음**: `data/`의 SQLite 데이터베이스는 애플리케이션이 아닌 MCP 서버에서 관리됨
+- **이중 저장 아키텍처**: API 키와 세션은 관계형 DB(영구 저장) + Redis(캐시)에 저장됨
+  - **관계형 DB**: MySQL/PostgreSQL/MariaDB 지원, 전체 대화 기록 영구 저장
+  - **Redis**: 활성 세션 캐시, 빠른 조회용 (최근 10개 메시지만)
+- **데이터베이스 마이그레이션 없음**: `data/`의 SQLite는 MCP 서버용, 애플리케이션 DB는 별도
 - **기본적으로 인증 활성화**: API 키 인증은 기본적으로 활성화됨. 개발 시 `AUTH_ENABLED=false`로 비활성화
-- **세션에는 Redis 필요**: 세션 관리 및 캐싱에는 Redis가 필요함. Redis 없이 앱이 시작되지만 인증이 실패함
+- **세션에는 Redis + DB 필요**:
+  - Redis: 활성 세션 캐시 (선택사항, 없으면 경고만)
+  - DB: 영구 저장소 (필수, 없으면 앱 시작 실패)
 - **API 키는 HMAC 서명됨**: 키는 HMAC-SHA256 서명을 사용한 `{token}.{signature}` 형식 사용
   - **중요**: 프로덕션에서는 `AUTH_SECRET_KEY`를 반드시 설정하고 비밀로 유지해야 함
   - `AUTH_SECRET_KEY` 변경은 기존의 모든 API 키를 무효화함
-  - 키는 Redis 저장을 위해 SHA-256으로 해시됨
+  - 키는 DB 저장을 위해 SHA-256으로 해시됨
   - 키는 생성 시 한 번만 표시됨 - 복구 불가능
-- **대화 기록 제한**: 토큰 오버플로를 방지하기 위해 최근 10개 메시지가 컨텍스트에 포함됨
-- **Ollama가 실행 중이어야 함**: Ollama를 사용할 수 없어도 애플리케이션이 시작되지만 쿼리가 실패함
+- **대화 기록 제한**: 토큰 오버플로를 방지하기 위해 최근 10개 메시지가 Redis 캐시와 LLM 컨텍스트에 포함됨
+- **전체 대화 기록은 DB에 저장**: 모든 메시지는 DB에 영구 저장되며 필요 시 조회 가능
+- **LLM 제공자 지원**: Ollama (로컬) 및 OpenAI (클라우드) 모두 지원
 - **MCP 서버 실패는 우아함**: 실패한 서버는 앱을 충돌시키지 않고 사용 가능한 컨텍스트만 줄임
 - **설정은 싱글톤**: 테스트에서 `reset_settings()`를 사용하여 깨끗한 상태 보장
-- **세션 자동 만료**: 비활성 상태 `REDIS_SESSION_TTL` 초 후 Redis에서 세션 삭제 (기본값 1시간)
+- **세션 자동 만료**: Redis 캐시는 `REDIS_SESSION_TTL` 초 후 만료 (기본값 1시간), DB 세션은 영구 보존
 - **의존성 주입 패턴**: 다음을 위해 직접 전역 액세스 대신 `Depends(get_service)` 사용:
   - 일관된 오류 처리 (HTTP 예외)
   - 쉬운 테스트 (`app.dependency_overrides`를 통한 모킹)
   - 타입 안전성
+- **API 키와 세션 관리 분리**:
+  - `APIKeyManager`: API 키 생성 및 검증 (DB만 사용)
+  - `SessionManager`: 대화 세션 관리 (DB + Redis 이중 저장)
