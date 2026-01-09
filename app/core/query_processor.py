@@ -105,28 +105,29 @@ class QueryProcessor:
                     history_parts.append(f"{role_label}: {msg.content}")
                 conversation_history = "\n".join(history_parts)
 
-        # 1단계: MCP 컨텍스트 수집
-        mcp_context = {}
-        
-        # 모든 활성화된 서버 중에서 선택
-        enabled_servers = [
-            name for name, status in self.mcp_client.get_all_statuses().items()
-            if status.enabled and status.running
-        ]
-        
-        if enabled_servers:
-            selected_server = await self.mcp_client.select_appropriate_server(enabled_servers, query, conversation_history)
-
-        # 선택된 서버에만 쿼리
-        if selected_server:
-            mcp_response = await self.mcp_client.query_server(selected_server, query, conversation_history)
-            mcp_context[selected_server] = mcp_response
-
-        # 2단계: LLM 응답 생성
+        # 1단계: Agent를 사용하여 필요한 도구 실행
         enhanced_query = query
         if conversation_history:
-            enhanced_query = f"Conversation History:\n{conversation_history}\n\nCurrent Query: {query}"
-        
+            enhanced_query = f"Current Query: {query} \n\nConversation History:\n{conversation_history}"
+
+        # Agent가 도구를 실행하고 MCP 컨텍스트 반환
+        agent_result = await self.mcp_client.query_with_all_tools(enhanced_query)
+
+        # 2단계: LLM Service를 사용하여 최종 답변 생성
+        mcp_context = agent_result.get("mcp_context", {})
+
+        # LLM Service에 Agent 요약도 컨텍스트로 추가
+        if agent_result.get("agent_summary"):
+            # Agent 요약을 특별한 서버로 추가
+            mcp_context["_agent_summary"] = MCPResponse(
+                server_name="_agent_summary",
+                success=True,
+                data={
+                    "summary": agent_result.get("agent_summary")
+                }
+            )
+
+        # LLM Service로 최종 답변 생성
         llm_response = await self.llm_service.generate_response(
             query=enhanced_query,
             mcp_context=mcp_context,
@@ -145,10 +146,10 @@ class QueryProcessor:
             "mcp_context": self._format_mcp_context_for_response(mcp_context),
             "metadata": {
                 "processing_time": round(processing_time, 3),
-                "mcp_servers_queried": list(mcp_context.keys()) if mcp_context else [],
-                "mcp_servers_successful": [
-                    name for name, resp in mcp_context.items() if resp.success
-                ] if mcp_context else [],
+                "mcp_servers_queried": list(set([t.get("server_name", "unknown") for t in agent_result.get("tools_used", [])])),
+                "mcp_servers_successful": list(set([t.get("server_name", "unknown") for t in agent_result.get("tools_used", []) if t.get("success", False)])),
+                "tools_used": agent_result.get("tools_used", []),
+                "agent_summary": agent_result.get("agent_summary", ""),
                 "success": llm_response.get("success", True),
                 "conversation_history_used": bool(conversation_history),
             },
@@ -160,6 +161,108 @@ class QueryProcessor:
             result["session_id"] = session.session_id
 
         return result
+
+    # ===== 기존 코드 (서버 선택 방식) =====
+    # async def process_query(
+    #     self,
+    #     query: str,
+    #     user_id: Optional[str] = None,
+    #     session_id: Optional[str] = None,
+    #     use_conversation_history: bool = True,
+    # ) -> Dict:
+    #     """
+    #     MCP 컨텍스트와 함께 사용자 쿼리를 처리하고 응답을 생성합니다.
+    #
+    #     Args:
+    #         query: 사용자 쿼리 문자열.
+    #         user_id: 세션 관리를 위한 사용자 ID.
+    #         session_id: 선택적 세션 ID. None이고 user_id가 제공되면 새 세션을 생성합니다.
+    #         use_conversation_history: 컨텍스트에 대화 기록을 포함할지 여부.
+    #
+    #     Returns:
+    #         응답, MCP 컨텍스트, session_id 및 메타데이터를 포함하는 딕셔너리.
+    #     """
+    #     start_time = time.time()
+    #
+    #     # 0단계: 쿼리 컨텍스트 준비
+    #     session = None
+    #     conversation_history = ""
+    #
+    #     if self.session_manager and user_id:
+    #         # 세션 로드
+    #         if session_id:
+    #             session = await self.session_manager.get_session(session_id)
+    #
+    #             # 유효하지 않은 세션이면 새로 생성
+    #             if not session or session.user_id != user_id:
+    #                 session = await self.session_manager.create_session(user_id)
+    #         else:
+    #             # 새 세션 생성
+    #             session = await self.session_manager.create_session(user_id)
+    #
+    #         # 활성화된 경우 대화 기록 구축
+    #         if use_conversation_history and session and session.messages:
+    #             history_parts = []
+    #             for msg in session.messages[-MAX_CONVERSATION_HISTORY_MESSAGES:]:
+    #                 role_label = "User" if msg.role == "user" else "Assistant"
+    #                 history_parts.append(f"{role_label}: {msg.content}")
+    #             conversation_history = "\n".join(history_parts)
+    #
+    #     # 1단계: MCP 컨텍스트 수집
+    #     mcp_context = {}
+    #
+    #     # 모든 활성화된 서버 중에서 선택
+    #     enabled_servers = [
+    #         name for name, status in self.mcp_client.get_all_statuses().items()
+    #         if status.enabled and status.running
+    #     ]
+    #
+    #     if enabled_servers:
+    #         selected_server = await self.mcp_client.select_appropriate_server(enabled_servers, query, conversation_history)
+    #
+    #     # 선택된 서버에만 쿼리
+    #     if selected_server:
+    #         mcp_response = await self.mcp_client.query_server(selected_server, query, conversation_history)
+    #         mcp_context[selected_server] = mcp_response
+    #
+    #     # 2단계: LLM 응답 생성
+    #     enhanced_query = query
+    #     if conversation_history:
+    #         enhanced_query = f"Conversation History:\n{conversation_history}\n\nCurrent Query: {query}"
+    #
+    #     llm_response = await self.llm_service.generate_response(
+    #         query=enhanced_query,
+    #         mcp_context=mcp_context,
+    #     )
+    #
+    #     # 3단계: 세션에 저장
+    #     await self._save_to_session(
+    #         session, query, llm_response.get("response", ""), mcp_context
+    #     )
+    #
+    #     # 4단계: 응답 구성
+    #     processing_time = time.time() - start_time
+    #     result = {
+    #         "response": llm_response.get("response", ""),
+    #         "model": llm_response.get("model", self.llm_service.model),
+    #         "mcp_context": self._format_mcp_context_for_response(mcp_context),
+    #         "metadata": {
+    #             "processing_time": round(processing_time, 3),
+    #             "mcp_servers_queried": list(mcp_context.keys()) if mcp_context else [],
+    #             "mcp_servers_successful": [
+    #                 name for name, resp in mcp_context.items() if resp.success
+    #             ] if mcp_context else [],
+    #             "success": llm_response.get("success", True),
+    #             "conversation_history_used": bool(conversation_history),
+    #         },
+    #         "success": llm_response.get("success", True),
+    #         "error": llm_response.get("error") if not llm_response.get("success", True) else None,
+    #     }
+    #
+    #     if session:
+    #         result["session_id"] = session.session_id
+    #
+    #     return result
 
     async def process_streaming_query(
         self,
@@ -204,30 +307,30 @@ class QueryProcessor:
                     history_parts.append(f"{role_label}: {msg.content}")
                 conversation_history = "\n".join(history_parts)
 
-        # 1단계: MCP 컨텍스트 수집
-        mcp_context = {}
-        
-        # 모든 활성화된 서버 중에서 선택
-        enabled_servers = [
-            name for name, status in self.mcp_client.get_all_statuses().items()
-            if status.enabled and status.running
-        ]
-        if enabled_servers:
-            selected_server = await self.mcp_client.select_appropriate_server(enabled_servers, query, conversation_history)
-        
-         # 선택된 서버에만 쿼리
-        if selected_server:
-            mcp_response = await self.mcp_client.query_server(selected_server, query, conversation_history)
-            mcp_context[selected_server] = mcp_response
-
-        # 2단계: LLM 응답 생성
+        # 1단계: Agent를 사용하여 필요한 도구 실행
         enhanced_query = query
         if conversation_history:
             enhanced_query = f"Conversation History:\n{conversation_history}\n\nCurrent Query: {query}"
-        
-        # 세션 저장을 위해 전체 응답 수집
-        full_response = ""
 
+        # Agent가 도구를 실행하고 MCP 컨텍스트 반환
+        agent_result = await self.mcp_client.query_with_all_tools(enhanced_query)
+
+        # 2단계: LLM Service를 사용하여 최종 답변 생성
+        mcp_context = agent_result.get("mcp_context", {})
+
+        # LLM Service에 Agent 요약도 컨텍스트로 추가
+        if agent_result.get("agent_summary"):
+            # Agent 요약을 특별한 서버로 추가
+            mcp_context["_agent_summary"] = MCPResponse(
+                server_name="_agent_summary",
+                success=True,
+                data={
+                    "summary": agent_result.get("agent_summary")
+                }
+            )
+
+        # LLM Service로 최종 답변 생성 (스트리밍)
+        full_response = ""
         async for chunk in self.llm_service.generate_streaming_response(
             query=enhanced_query,
             mcp_context=mcp_context,
@@ -235,7 +338,7 @@ class QueryProcessor:
             full_response += chunk
             yield chunk
 
-        # 3단계: 스트리밍 완료 후 세션에 저장
+        # 3단계: 세션에 저장
         await self._save_to_session(session, query, full_response, mcp_context)
 
     def _format_mcp_context_for_response(self, mcp_context: Dict[str, MCPResponse]) -> Dict:
