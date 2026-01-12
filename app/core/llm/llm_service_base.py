@@ -131,23 +131,23 @@ Please provide a comprehensive and accurate answer based on the available contex
         context_parts.append("Available Context:")
 
         # _agent_summary 처리 (MCPResponse 객체를 문자열로 변환)
-        agent_summary_response = mcp_context.get("_agent_summary")
+        agent_summary_response = mcp_context.get("agent_summary")
         if agent_summary_response and hasattr(agent_summary_response, 'data'):
             agent_summary = agent_summary_response.data.get("summary", "No agent summary available.")
             context_parts.append(agent_summary)
         else:
             context_parts.append("No agent summary available.")
         for server_name, response in mcp_context.items():
-            if server_name == "_agent_summary":
+            if server_name == "agent_summary":
                 continue
 
             if response.success:
                 if isinstance(response.data, dict):
-                    tool_names = ""
+                    tool_names = []
                     for tool in response.data.get("tools_executed", []):
-                        tool_names += f"{tool.get('tool_name', 'unknown tool')},"
-                    tool_names = tool_names.rstrip(",")
-                    context_parts.append(f"\n--- From {server_name} : {tool_names}")
+                        tool_names.append(tool.get('tool_name', 'unknown tool'))
+                    tool_names_str = ", ".join(tool_names)
+                    context_parts.append(f"\n--- From {server_name} : {tool_names_str}")
                 else:
                     context_parts.append(f"\n--- From {server_name} ---")
             elif not response.success and response.error:

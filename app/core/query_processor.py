@@ -147,8 +147,8 @@ class QueryProcessor:
         # LLM Service에 Agent 요약도 컨텍스트로 추가
         if agent_result.get("agent_summary"):
             # Agent 요약을 특별한 서버로 추가
-            mcp_context["_agent_summary"] = MCPResponse(
-                server_name="_agent_summary",
+            mcp_context["agent_summary"] = MCPResponse(
+                server_name="agent_summary",
                 success=True,
                 data={
                     "summary": agent_result.get("agent_summary")

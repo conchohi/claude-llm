@@ -144,7 +144,7 @@ class SessionManager:
             updated_at=datetime.fromisoformat(data["updated_at"]),
         )
 
-    async def get_session_info(
+    async def get_session(
         self, session_id: str
     ) -> Optional[ConversationSession]:
         """DB에서 세션을 가져옵니다."""

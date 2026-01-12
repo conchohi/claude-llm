@@ -44,6 +44,10 @@ class MCPClientManager:
         self._server_configs: Dict[str, MCPServerConfig] = {}
         self._server_status: Dict[str, MCPServerStatus] = {}
         self._server_tool_mapping: Dict[str, str] = {}  # 도구 이름 -> 서버 이름 매핑
+        
+        # MCP 도구 캐시
+        self._tools_cache: Optional[List] = None
+        self._tools_cache_time: Optional[float] = None
 
         # LLM 인스턴스 캐시 (재사용)
         self._llm_instance = None
@@ -115,6 +119,9 @@ class MCPClientManager:
                     self._server_status[server_name].error = str(server_error)
 
             logger.info(f"✓ MultiServerMCPClient를 통해 {len(mcp_servers)}개 MCP 서버 초기화 완료")
+            
+            # Tool 로딩
+            await self.get_cached_tools()
 
         except Exception as e:
             error_msg = f"MultiServerMCPClient 초기화 실패: {e}"
@@ -210,34 +217,29 @@ class MCPClientManager:
         """모든 서버의 상태를 가져옵니다."""
         return self._server_status.copy()
 
-    async def get_available_tools_info(self, server_name: Optional[str] = None) -> List[str]:
+    async def get_cached_tools(self, cache_ttl: int = 300) -> List:
         """
-        사용 가능한 도구 이름 목록을 가져옵니다.
+        캐시된 도구 목록을 반환합니다.
 
         Args:
-            server_name: 도구를 필터링할 선택적 서버 이름. None이면 모든 도구를 반환합니다.
+            cache_ttl: 캐시 유효 시간 (초). 기본 : 300초 (5분)
 
         Returns:
-            도구 이름 목록.
+            도구 목록.
         """
-        if not self.mcp_client:
-            return []
+        now = time.time()
 
-        try:
-            if server_name:
-                # 특정 서버에서 도구 가져오기
-                async with self.mcp_client.session(server_name) as session:
-                    from langchain_mcp_adapters.tools import load_mcp_tools
-                    tools = await load_mcp_tools(session)
-                   
-            else:
-                # 모든 도구 가져오기
-                tools = await self.mcp_client.get_tools()
-            
-            return [
-                    {"name": tool.name, "description": tool.description} for tool in tools] if tools else []
-        except:
-            return []
+        # 캐시가 없거나 만료된 경우 새로 로드
+        if (self._tools_cache is None or
+            self._tools_cache_time is None or
+            now - self._tools_cache_time > cache_ttl):
+
+            self._tools_cache = await self.mcp_client.get_tools()
+            self._tools_cache_time = now
+            logger.info(f"도구 캐시 갱신 - {len(self._tools_cache)}개 도구")
+
+        return self._tools_cache
+
 
     async def query_with_all_tools(self, query: str) -> Dict:
         """
@@ -256,8 +258,9 @@ class MCPClientManager:
             return {
                 "success": False,
                 "error": "MultiServerMCPClient가 초기화되지 않았습니다",
-                "response": "",
+                "mcp_context": {},
                 "tools_used": [],
+                "latency_ms": 0,
             }
 
         try:
@@ -273,15 +276,15 @@ class MCPClientManager:
                 logger.warning("활성화된 MCP 서버가 없습니다")
                 return {
                     "success": True,
-                    "response": "사용 가능한 MCP 도구가 없어 직접 응답합니다.",
-                    "tools_used": []
+                    "mcp_context": {},
+                    "tools_used": [],
+                    "latency_ms": 0,
                 }
 
             # MultiServerMCPClient.get_tools()를 사용하여 모든 도구 로드
             # 이 메서드는 세션을 내부적으로 관리하므로 도구 실행 시 세션이 유지됨
             try:
-                all_tools = await self.mcp_client.get_tools()
-                logger.info(f"총 {len(all_tools)}개 도구 로드 완료")
+                all_tools = await self.get_cached_tools()
             except Exception as e:
                 logger.error(f"도구 로드 중 오류 발생: {e}", exc_info=True)
                 all_tools = []
@@ -290,8 +293,9 @@ class MCPClientManager:
                 logger.warning("로드된 도구가 없습니다")
                 return {
                     "success": True,
-                    "response": "사용 가능한 MCP 도구가 없어 직접 응답합니다.",
-                    "tools_used": []
+                    "mcp_context": {},
+                    "tools_used": [],
+                    "latency_ms": 0,
                 }
 
             # LLM 인스턴스 초기화 (필요한 경우)
@@ -321,11 +325,9 @@ class MCPClientManager:
             # 에이전트 프롬프트 생성 (도구 실행에만 집중, 간결하게)
             agent_prompt = ChatPromptTemplate.from_messages([
                  ("system", """당신은 사용자 쿼리를 처리하기 위해 필요한 도구를 선택하고 실행하는 어시스턴트입니다.
-
                             주어진 쿼리를 처리하기 위해 필요한 도구를 자유롭게 선택하고 사용하세요.
                             여러 도구를 연쇄적으로 사용할 수 있으며, 한 도구의 결과를 바탕으로 다른 도구를 호출할 수 있습니다.
-                            필요한 도구를 선택하고 실행하세요. 도구 실행 결과만 간략히 요약하세요.
-                            도구 실행이 완료되면 수집한 정보를 요약하여 반환하세요.
+                            필요한 도구를 선택하고 실행하세요. 도구 실행이 완료되면 수집한 정보를 요약하여 반환하세요.
                             도구를 사용하지 않았을 경우 빈 응답을 반환하세요.
                             불필요한 설명이나 장황한 내용을 피하고, 도구 실행에 집중하세요."""),
                 ("human", "{input}"),
@@ -341,14 +343,12 @@ class MCPClientManager:
                 return_intermediate_steps=True,
                 max_iterations=10,
             )
-
-            # 에이전트 실행 (도구 실행만)
             agent_result = await agent_executor.ainvoke({"input": query})
 
             # 사용된 도구 정보 추출
             tools_used = []
             mcp_context_for_llm = {}  # LLM Service에 전달할 MCP 컨텍스트
-    
+
             if "intermediate_steps" in agent_result and agent_result["intermediate_steps"]:
                 for step in agent_result["intermediate_steps"]:
                     tool_action, tool_result = step
@@ -356,13 +356,7 @@ class MCPClientManager:
                     server_name = self._server_tool_mapping.get(tool_name, "unknown")
 
                     # 도구 사용 정보 저장
-                    tools_used.append({
-                        "tool_name": tool_name,
-                        "server_name": server_name,
-                        "input": tool_action.tool_input,
-                        "result": str(tool_result)[:200],  # 결과는 200자로 제한
-                        "success": True,
-                    })
+                    tools_used.append(tool_name)
 
                     # MCP 컨텍스트 구성 (서버별로 그룹화)
                     if server_name not in mcp_context_for_llm:
@@ -373,20 +367,20 @@ class MCPClientManager:
                                 "tools_executed": []
                             }
                         )
-
                     mcp_context_for_llm[server_name].data["tools_executed"].append({
                         "tool_name": tool_name,
                         "input": tool_action.tool_input,
-                        "result": str(tool_result)[:3000],  # 3000자로 제한
+                        "result": str(tool_result)[:500],  # 500자로 제한
                     })
+            total_time = time.time() - start_time
 
-            latency_ms = (time.time() - start_time) * 1000
-            
+            latency_ms = total_time * 1000
+
             return {
                 "success": True,
                 "agent_summary": agent_result.get("output", "") if tools_used else None,  # Agent의 요약
                 "tools_used": tools_used,
-                "mcp_context": mcp_context_for_llm, 
+                "mcp_context": mcp_context_for_llm,
                 "latency_ms": latency_ms,
             }
 
